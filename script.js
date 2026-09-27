@@ -3,10 +3,9 @@
  * Condition: Control Condition (Aligned Directional Movement & Pauses)
  * 
  * UPDATES APPLIED:
- * - Speed: 1.7 m/s (natural brisk walk, covers required distance).
- * - Deviations (Sapmalar): Completely distinct 90-degree (left/right) and 
- *   180-degree (backward/down) movements. 2 seconds out, 2 seconds back.
- * - Schedules recalculated to fit exact 60s timeframe with 9s total pauses each.
+ * - Deviations: Increased to 6 seconds total (3s out, 3s back) for maximum visibility.
+ * - Synchronization: PERFECTLY ASYNCHRONOUS. G and M never pause or deviate 
+ *   at the same time. While one is pausing/deviating, the other is walking normally.
  * ========================================================================== */
 
 const CONDITION = "CONTROL";
@@ -14,18 +13,17 @@ const CONDITION_LABEL = "Control Condition";
 
 // Map & Camera Settings
 const MAP_CENTER = [32.889145, 39.929722];
-const SCENE_ROTATION_DEG = 41;
+const SCENE_ROTATION_DEG = 21;
 function rot(bearingDeg) { return (bearingDeg + SCENE_ROTATION_DEG + 360) % 360; }
-const MAP_ZOOM = 16.5;
+const MAP_ZOOM = 16.8;
 
-// Tempolu yürüme hızı (sapmalardaki 3.5 metrelik hareketi belirgin kılar)
+// Tempolu yürüme hızı (3 saniyelik sapmalarda ~5 metrelik net bir gidiş sağlar)
 const WALK_SPEED_MPS = 1.7; 
 
 // Timeline parameters
 const T_STABLE = 2000;      // 0-2s: Initial Hold
 const T_FINAL_HOLD = 3000;  // Final hold after movement finishes
 
-// İki nokta arasındaki mesafe ve yönü (bearing) hesaplayan yardımcı fonksiyon
 function calculateBearing(start, end) {
     const startLat = start[1] * Math.PI / 180;
     const startLng = start[0] * Math.PI / 180;
@@ -39,7 +37,6 @@ function calculateBearing(start, end) {
     return (brng + 360) % 360;
 }
 
-// Konumlar
 const START_G = [32.888409, 39.929681];
 const TARGET_G = [32.888455, 39.930278];
 
@@ -52,7 +49,6 @@ const ROAD_START = [32.888752, 39.929566];
 const ROAD_TARGET_1 = [32.888541, 39.930241];
 const ROAD_TARGET_2 = [32.889835, 39.929885];
 
-// Ajanların hareket edeceği yönlerin (bearing) türetilmesi
 const BEARING_G = calculateBearing(START_G, TARGET_G);
 const BEARING_M = calculateBearing(START_M, TARGET_M);
 
@@ -67,59 +63,60 @@ function offsetMeters(origin, bearingDeg, meters) {
     return [origin[0] + dLng, origin[1] + dLat];
 }
 
-// Yön tuşu sapma simülatörü (Tamamen belirginleşti)
+// Yön tuşu sapma simülatörü (3s Gidiş - 3s Dönüş)
 // dir: 1 (Tam 90 Derece Sağ), -1 (Tam 90 Derece Sol), 2 (Geri / Aşağı Yön)
 function buildGridDeviation(baseBearing, dir) {
     if (dir === 2) {
-        // Geriye (Aşağı) Sapma: 2s geriye yürür, 2s ileri yürüyerek rotayı toparlar
+        // Geriye Sapma: 3s geriye yürür, 3s ileri yürüyerek rotayı toparlar
         return [
-            { d: 2, b: (baseBearing + 180) % 360 },
-            { d: 2, b: baseBearing }
+            { d: 3, b: (baseBearing + 180) % 360 },
+            { d: 3, b: baseBearing }
         ];
     } else {
-        // Sağa veya Sola Sapma: 2s tam 90 derece dışarı yürür, 2s ters 90 derece ile geri döner
+        // Sağa/Sola Sapma: 3s dışarı yürür, 3s ters yönde geri döner
         return [
-            { d: 2, b: (baseBearing + (90 * dir) + 360) % 360 },
-            { d: 2, b: (baseBearing - (90 * dir) + 360) % 360 }
+            { d: 3, b: (baseBearing + (90 * dir) + 360) % 360 },
+            { d: 3, b: (baseBearing - (90 * dir) + 360) % 360 }
         ];
     }
 }
 
-// G: Toplam 60s. 3 duraklama (3s, 2s, 4s = 9s). 3 belirgin sapma (Sağ, Aşağı/Geri, Sol). 
+// G İkonu: Toplam 60s. Hiçbir özel hareketi M ile çakışmaz.
 const SCHEDULE_G = [
-    { d: 5, b: BEARING_G },                        // 0-5s
-    { d: 3, b: null },                             // DURAKLAMA 1 (3s) [5-8]
-    { d: 5, b: BEARING_G },                        // 8-13s
-    ...buildGridDeviation(BEARING_G, 1),           // SAPMA 1: SAĞA (4s) [13-17]
-    { d: 7, b: BEARING_G },                        // 17-24s
-    { d: 2, b: null },                             // DURAKLAMA 2 (2s) [24-26]
-    { d: 6, b: BEARING_G },                        // 26-32s
-    ...buildGridDeviation(BEARING_G, 2),           // SAPMA 2: AŞAĞI/GERİ (4s) [32-36]
-    { d: 5, b: BEARING_G },                        // 36-41s
-    { d: 4, b: null },                             // DURAKLAMA 3 (4s) [41-45]
-    { d: 6, b: BEARING_G },                        // 45-51s
-    ...buildGridDeviation(BEARING_G, -1),          // SAPMA 3: SOLA (4s) [51-55]
-    { d: 5, b: BEARING_G }                         // 55-60s
+    { d: 6, b: BEARING_G },                        // 0-6s: Düz yürü
+    { d: 3, b: null },                             // 6-9s: DURAKLAMA 1 (3s)
+    { d: 1, b: BEARING_G },                        // 9-10s: Düz yürü
+    ...buildGridDeviation(BEARING_G, 1),           // 10-16s: SAPMA 1 (SAĞA 3s git, 3s gel)
+    { d: 2, b: BEARING_G },                        // 16-18s: Düz yürü
+    { d: 6, b: BEARING_G },                        // 18-24s: Düz yürü
+    { d: 2, b: null },                             // 24-26s: DURAKLAMA 2 (2s)
+    { d: 2, b: BEARING_G },                        // 26-28s: Düz yürü
+    ...buildGridDeviation(BEARING_G, 2),           // 28-34s: SAPMA 2 (AŞAĞI 3s git, 3s gel)
+    { d: 2, b: BEARING_G },                        // 34-36s: Düz yürü
+    { d: 6, b: BEARING_G },                        // 36-42s: Düz yürü
+    { d: 4, b: null },                             // 42-46s: DURAKLAMA 3 (4s)
+    { d: 2, b: BEARING_G },                        // 46-48s: Düz yürü
+    ...buildGridDeviation(BEARING_G, -1),          // 48-54s: SAPMA 3 (SOLA 3s git, 3s gel)
+    { d: 6, b: BEARING_G }                         // 54-60s: Düz yürü
 ];
 
-// M: Toplam 60s. 5 duraklama (1s, 2s, 2s, 2s, 2s = 9s). 3 belirgin sapma (Sol, Sağ, Aşağı/Geri). 
-// Duraklamalar, G'nin duraklamalarıyla (5-8, 24-26, 41-45) asla çakışmaz.
+// M İkonu: Toplam 60s. Hiçbir özel hareketi G ile çakışmaz.
 const SCHEDULE_M = [
-    ...buildGridDeviation(BEARING_M, -1),          // SAPMA 1: SOLA (4s) [0-4]
-    { d: 5, b: BEARING_M },                        // 4-9s
-    { d: 1, b: null },                             // DURAKLAMA 1 (1s) [9-10]
-    { d: 5, b: BEARING_M },                        // 10-15s
-    { d: 2, b: null },                             // DURAKLAMA 2 (2s) [15-17]
-    ...buildGridDeviation(BEARING_M, 1),           // SAPMA 2: SAĞA (4s) [17-21]
-    { d: 6, b: BEARING_M },                        // 21-27s
-    { d: 2, b: null },                             // DURAKLAMA 3 (2s) [27-29]
-    { d: 5, b: BEARING_M },                        // 29-34s
-    ...buildGridDeviation(BEARING_M, 2),           // SAPMA 3: AŞAĞI/GERİ (4s) [34-38]
-    { d: 8, b: BEARING_M },                        // 38-46s
-    { d: 2, b: null },                             // DURAKLAMA 4 (2s) [46-48]
-    { d: 5, b: BEARING_M },                        // 48-53s
-    { d: 2, b: null },                             // DURAKLAMA 5 (2s) [53-55]
-    { d: 5, b: BEARING_M }                         // 55-60s
+    ...buildGridDeviation(BEARING_M, -1),          // 0-6s: SAPMA 1 (SOLA 3s git, 3s gel)
+    { d: 3, b: BEARING_M },                        // 6-9s: Düz yürü
+    { d: 1, b: null },                             // 9-10s: DURAKLAMA 1 (1s)
+    { d: 6, b: BEARING_M },                        // 10-16s: Düz yürü
+    { d: 2, b: null },                             // 16-18s: DURAKLAMA 2 (2s)
+    ...buildGridDeviation(BEARING_M, 1),           // 18-24s: SAPMA 2 (SAĞA 3s git, 3s gel)
+    { d: 2, b: BEARING_M },                        // 24-26s: Düz yürü
+    { d: 2, b: null },                             // 26-28s: DURAKLAMA 3 (2s)
+    { d: 6, b: BEARING_M },                        // 28-34s: Düz yürü
+    { d: 2, b: null },                             // 34-36s: DURAKLAMA 4 (2s)
+    ...buildGridDeviation(BEARING_M, 2),           // 36-42s: SAPMA 3 (AŞAĞI 3s git, 3s gel)
+    { d: 4, b: BEARING_M },                        // 42-46s: Düz yürü
+    { d: 2, b: null },                             // 46-48s: DURAKLAMA 5 (2s)
+    { d: 6, b: BEARING_M },                        // 48-54s: Düz yürü
+    { d: 6, b: BEARING_M }                         // 54-60s: Düz yürü
 ];
 
 function scheduleTotalSeconds(schedule) {
