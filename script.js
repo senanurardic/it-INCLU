@@ -1,7 +1,12 @@
 /* ============================================================================
  * LOCATION-SHARING SOCIAL DISCONNECTION PARADIGM
  * Condition: Control Condition (Aligned Directional Movement & Pauses)
- * Total sequence: 33 s
+ * 
+ * UPDATES APPLIED:
+ * - Speed: 1.7 m/s (natural brisk walk, covers required distance).
+ * - Deviations (Sapmalar): Completely distinct 90-degree (left/right) and 
+ *   180-degree (backward/down) movements. 2 seconds out, 2 seconds back.
+ * - Schedules recalculated to fit exact 60s timeframe with 9s total pauses each.
  * ========================================================================== */
 
 const CONDITION = "CONTROL";
@@ -13,16 +18,12 @@ const SCENE_ROTATION_DEG = 41;
 function rot(bearingDeg) { return (bearingDeg + SCENE_ROTATION_DEG + 360) % 360; }
 const MAP_ZOOM = 16.5;
 
-const WALK_SPEED_MPS = 4.0; 
+// Tempolu yürüme hızı (sapmalardaki 3.5 metrelik hareketi belirgin kılar)
+const WALK_SPEED_MPS = 1.7; 
 
-// Timeline parameters in milliseconds (Total = 33,000 ms)
-const T_STABLE = 4000;   // 0-4s: Hold
-const T_BLOCK1 = 12000;  // 4-16s: Move block 1 (12s)
-const T_BLOCK2 = 2000;   // 16-18s: Hold (2s)
-const T_BLOCK3 = 12000;  // 18-30s: Move block 2 (12s)
-const T_BLOCK4 = 3000;   // 30-33s: Final hold (3s)
-const TOTAL_ANIMATION_DURATION = T_STABLE + T_BLOCK1 + T_BLOCK2 + T_BLOCK3 + T_BLOCK4; 
-const FINAL_HOLD_DURATION = 0; 
+// Timeline parameters
+const T_STABLE = 2000;      // 0-2s: Initial Hold
+const T_FINAL_HOLD = 3000;  // Final hold after movement finishes
 
 // İki nokta arasındaki mesafe ve yönü (bearing) hesaplayan yardımcı fonksiyon
 function calculateBearing(start, end) {
@@ -38,7 +39,7 @@ function calculateBearing(start, end) {
     return (brng + 360) % 360;
 }
 
-// Konumlar ve Belirttiğiniz Kesin Hedef Koordinatları [Lng, Lat]
+// Konumlar
 const START_G = [32.888409, 39.929681];
 const TARGET_G = [32.888455, 39.930278];
 
@@ -51,22 +52,9 @@ const ROAD_START = [32.888752, 39.929566];
 const ROAD_TARGET_1 = [32.888541, 39.930241];
 const ROAD_TARGET_2 = [32.889835, 39.929885];
 
-// Ajanların hareket edeceği yönlerin (bearing) coğrafi koordinatlardan dinamik türetilmesi
+// Ajanların hareket edeceği yönlerin (bearing) türetilmesi
 const BEARING_G = calculateBearing(START_G, TARGET_G);
 const BEARING_M = calculateBearing(START_M, TARGET_M);
-
-// G ve M için duraklamaları içeren programlar (Verdiğiniz yön açıları entegre edildi)
-const SCHEDULE_G = [
-    { d: 2, b: BEARING_G }, { d: 1, b: null }, { d: 5, b: BEARING_G }, { d: 1, b: null }, { d: 3, b: BEARING_G },
-    { d: 2, b: null },
-    { d: 3, b: BEARING_G }, { d: 1, b: null }, { d: 5, b: BEARING_G }, { d: 1, b: null }, { d: 2, b: BEARING_G }
-];
-
-const SCHEDULE_M = [
-    { d: 3, b: BEARING_M }, { d: 1, b: null }, { d: 5, b: BEARING_M }, { d: 1, b: null }, { d: 2, b: BEARING_M },
-    { d: 2, b: null },
-    { d: 4, b: BEARING_M }, { d: 1, b: null }, { d: 4, b: BEARING_M }, { d: 1, b: null }, { d: 2, b: BEARING_M }
-];
 
 const EARTH_RADIUS_M = 6378137;
 
@@ -78,6 +66,69 @@ function offsetMeters(origin, bearingDeg, meters) {
     const dLng = (dEast / (EARTH_RADIUS_M * Math.cos(origin[1] * Math.PI / 180))) * 180 / Math.PI;
     return [origin[0] + dLng, origin[1] + dLat];
 }
+
+// Yön tuşu sapma simülatörü (Tamamen belirginleşti)
+// dir: 1 (Tam 90 Derece Sağ), -1 (Tam 90 Derece Sol), 2 (Geri / Aşağı Yön)
+function buildGridDeviation(baseBearing, dir) {
+    if (dir === 2) {
+        // Geriye (Aşağı) Sapma: 2s geriye yürür, 2s ileri yürüyerek rotayı toparlar
+        return [
+            { d: 2, b: (baseBearing + 180) % 360 },
+            { d: 2, b: baseBearing }
+        ];
+    } else {
+        // Sağa veya Sola Sapma: 2s tam 90 derece dışarı yürür, 2s ters 90 derece ile geri döner
+        return [
+            { d: 2, b: (baseBearing + (90 * dir) + 360) % 360 },
+            { d: 2, b: (baseBearing - (90 * dir) + 360) % 360 }
+        ];
+    }
+}
+
+// G: Toplam 60s. 3 duraklama (3s, 2s, 4s = 9s). 3 belirgin sapma (Sağ, Aşağı/Geri, Sol). 
+const SCHEDULE_G = [
+    { d: 5, b: BEARING_G },                        // 0-5s
+    { d: 3, b: null },                             // DURAKLAMA 1 (3s) [5-8]
+    { d: 5, b: BEARING_G },                        // 8-13s
+    ...buildGridDeviation(BEARING_G, 1),           // SAPMA 1: SAĞA (4s) [13-17]
+    { d: 7, b: BEARING_G },                        // 17-24s
+    { d: 2, b: null },                             // DURAKLAMA 2 (2s) [24-26]
+    { d: 6, b: BEARING_G },                        // 26-32s
+    ...buildGridDeviation(BEARING_G, 2),           // SAPMA 2: AŞAĞI/GERİ (4s) [32-36]
+    { d: 5, b: BEARING_G },                        // 36-41s
+    { d: 4, b: null },                             // DURAKLAMA 3 (4s) [41-45]
+    { d: 6, b: BEARING_G },                        // 45-51s
+    ...buildGridDeviation(BEARING_G, -1),          // SAPMA 3: SOLA (4s) [51-55]
+    { d: 5, b: BEARING_G }                         // 55-60s
+];
+
+// M: Toplam 60s. 5 duraklama (1s, 2s, 2s, 2s, 2s = 9s). 3 belirgin sapma (Sol, Sağ, Aşağı/Geri). 
+// Duraklamalar, G'nin duraklamalarıyla (5-8, 24-26, 41-45) asla çakışmaz.
+const SCHEDULE_M = [
+    ...buildGridDeviation(BEARING_M, -1),          // SAPMA 1: SOLA (4s) [0-4]
+    { d: 5, b: BEARING_M },                        // 4-9s
+    { d: 1, b: null },                             // DURAKLAMA 1 (1s) [9-10]
+    { d: 5, b: BEARING_M },                        // 10-15s
+    { d: 2, b: null },                             // DURAKLAMA 2 (2s) [15-17]
+    ...buildGridDeviation(BEARING_M, 1),           // SAPMA 2: SAĞA (4s) [17-21]
+    { d: 6, b: BEARING_M },                        // 21-27s
+    { d: 2, b: null },                             // DURAKLAMA 3 (2s) [27-29]
+    { d: 5, b: BEARING_M },                        // 29-34s
+    ...buildGridDeviation(BEARING_M, 2),           // SAPMA 3: AŞAĞI/GERİ (4s) [34-38]
+    { d: 8, b: BEARING_M },                        // 38-46s
+    { d: 2, b: null },                             // DURAKLAMA 4 (2s) [46-48]
+    { d: 5, b: BEARING_M },                        // 48-53s
+    { d: 2, b: null },                             // DURAKLAMA 5 (2s) [53-55]
+    { d: 5, b: BEARING_M }                         // 55-60s
+];
+
+function scheduleTotalSeconds(schedule) {
+    return schedule.reduce((sum, seg) => sum + seg.d, 0);
+}
+
+const ACTIVE_MS_G = scheduleTotalSeconds(SCHEDULE_G) * 1000;
+const ACTIVE_MS_M = scheduleTotalSeconds(SCHEDULE_M) * 1000;
+const TOTAL_ANIMATION_DURATION = T_STABLE + Math.max(ACTIVE_MS_G, ACTIVE_MS_M) + T_FINAL_HOLD;
 
 const HUB = offsetMeters(MAP_CENTER, rot(0), 0);
 const positions = { leftNode: START_G, rightNode: START_M, mainNode: START_U };
@@ -120,6 +171,16 @@ function positionAt(keys, tMs) {
     return keys[keys.length - 1].pos;
 }
 
+function isPausedAt(schedule, tMs) {
+    let acc = 0;
+    for (const seg of schedule) {
+        const segMs = seg.d * 1000;
+        if (tMs < acc + segMs) return seg.b === null;
+        acc += segMs;
+    }
+    return true; 
+}
+
 const JITTER = {
     G: { fx1: 0.31, px1: 0.00, fx2: 0.53, px2: 1.70, fy1: 0.24, py1: 2.20, fy2: 0.47, py2: 0.40 },
     M: { fx1: 0.27, px1: 2.40, fx2: 0.61, px2: 0.90, fy1: 0.35, py1: 1.10, fy2: 0.19, py2: 2.90 }
@@ -135,27 +196,19 @@ function jitterMeters(who, tSec, amplitude) {
 const JITTER_IDLE_M = 0.0;   
 const JITTER_MOVE_M = 0.12; 
 
-function jitterAmplitude(elapsedMs) {
-    const t1 = T_STABLE + T_BLOCK1;
-    const t2 = t1 + T_BLOCK2;
-    const t3 = t2 + T_BLOCK3;
-
-    if (elapsedMs <= T_STABLE || (elapsedMs >= t1 && elapsedMs <= t2) || elapsedMs >= t3) {
-        return JITTER_IDLE_M;
-    }
-    return JITTER_MOVE_M;
-}
-
 const WAYPOINTS_G = buildWaypoints(START_G, SCHEDULE_G);
 const WAYPOINTS_M = buildWaypoints(START_M, SCHEDULE_M);
 
 function truePosition(who, elapsedMs) {
     const keys = (who === "G") ? WAYPOINTS_G : WAYPOINTS_M;
-    const moveStart = T_STABLE;
-    const base = (elapsedMs < moveStart)
-        ? keys[0].pos
-        : positionAt(keys, elapsedMs - moveStart);
-    const j = jitterMeters(who, elapsedMs / 1000, jitterAmplitude(elapsedMs));
+    const schedule = (who === "G") ? SCHEDULE_G : SCHEDULE_M;
+    const localMs = elapsedMs - T_STABLE;
+
+    const base = (localMs < 0) ? keys[0].pos : positionAt(keys, localMs);
+    const paused = (localMs < 0) ? true : isPausedAt(schedule, localMs);
+    const amplitude = paused ? JITTER_IDLE_M : JITTER_MOVE_M;
+
+    const j = jitterMeters(who, elapsedMs / 1000, amplitude);
     let p = offsetMeters(base, 90, j[0]);   
     p = offsetMeters(p, 0, j[1]);           
     return p;
@@ -183,6 +236,7 @@ let userNickname = "";
 let map = null;
 const markerInstances = {};
 let startTime = null;
+let animationStartWallClock = null;
 
 function createMarkerElement(person) {
     const clusterEl = document.createElement("div");
@@ -518,7 +572,14 @@ function bootstrap() {
     const nicknameInput  = document.getElementById("nickname-input");
     const submitBtn      = document.getElementById("submit-btn");
 
+    if (stepConnecting) stepConnecting.querySelector('.flow-text').textContent = "Connessione in corso...";
+    if (stepWaiting) stepWaiting.querySelector('.flow-text').textContent = "In attesa degli altri partecipanti...";
+    
     if (stepJoined) {
+        let pTags = stepJoined.querySelectorAll('.flow-text');
+        if (pTags.length > 0) pTags[0].textContent = "Tutti i partecipanti si sono uniti.";
+        if (pTags.length > 1) pTags[1].textContent = "Verrai reindirizzato all'app di condivisione della posizione insieme agli altri partecipanti.";
+        
         let badge = stepJoined.querySelector('.modern-success-badge');
         if (!badge) {
             badge = document.createElement('div');
@@ -526,6 +587,14 @@ function bootstrap() {
             badge.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
             stepJoined.insertBefore(badge, stepJoined.firstChild);
         }
+    }
+    
+    if (stepNickname) {
+        let ins = stepNickname.querySelector('.instruction');
+        if (ins) ins.textContent = "Inserisci un nickname per l'app di condivisione della posizione a cui ti connetterai tra poco.";
+        let note = stepNickname.querySelector('.input-note');
+        if (note) note.textContent = "Solo tu potrai vedere il tuo nickname completo. Gli altri partecipanti vedranno solo l'iniziale del tuo nickname.";
+        if (nicknameInput) nicknameInput.placeholder = "Inserisci il nickname...";
     }
 
     function startExperimentFlow() {
@@ -558,7 +627,7 @@ function bootstrap() {
                         <circle cx="12" cy="10" r="3"></circle>
                     </svg>
                 </div>
-                NeredeApp
+                DoveApp
             </div>
         `;
         document.body.appendChild(modernHeader);
@@ -573,7 +642,7 @@ function bootstrap() {
 
     function handleLoginSubmit() {
         const val = nicknameInput ? nicknameInput.value.trim() : "Participant";
-        if (val === "") { alert("Lütfen geçerli bir takma ad girin."); return; }
+        if (val === "") { alert("Inserisci un nickname valido."); return; }
         userNickname = val;
         if (flowScreen) {
             flowScreen.style.opacity = "0";
@@ -610,8 +679,8 @@ function bootstrap() {
             "font-family:sans-serif;text-align:center;padding:24px;box-sizing:border-box;z-index:5000;";
         fallback.innerHTML =
             '<div style="max-width:420px;">' +
-            '<p style="font-size:17px;color:#333;margin-bottom:8px;">Harita şu anda yüklenemedi.</p>' +
-            '<p style="font-size:14px;color:#666;">Bağlantınız kontrol ediliyor, lütfen bekleyiniz.</p>' +
+            '<p style="font-size:17px;color:#333;margin-bottom:8px;">La mappa non è al momento disponibile.</p>' +
+            '<p style="font-size:14px;color:#666;">Verifica della connessione in corso, attendere prego.</p>' +
             "</div>";
         document.body.appendChild(fallback);
 
@@ -819,7 +888,7 @@ if (typeof module !== "undefined" && module.exports) {
         CONDITION, CONDITION_LABEL, SCHEDULE_G, SCHEDULE_M,
         START_G, START_M, START_U, MAP_CENTER, MAP_ZOOM, WALK_SPEED_MPS,
         SCENE_ROTATION_DEG,
-        T_STABLE, T_BLOCK1, T_BLOCK2, T_BLOCK3, T_BLOCK4, TOTAL_ANIMATION_DURATION,
+        T_STABLE, TOTAL_ANIMATION_DURATION,
         agentPosition, truePosition, offsetMeters,
         GPS_UPDATE_MS, GPS_TWEEN_MS
     };
