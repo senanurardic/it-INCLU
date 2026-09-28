@@ -10,7 +10,7 @@
  * 11–12    straight BG               PAUSE (1s)
  * 12–18    deviate EAST              straight BM
  * 18–20    straight BG               PAUSE (2s)
- * 20–26    straight BG               deviate LEFT (342°)
+ * 20–26    straight BG               deviate WEST (342°)
  * 26–28    PAUSE (2s)                straight BM
  * 28–30    straight BG               PAUSE (2s)
  * 30–36    deviate WEST              straight BM
@@ -28,7 +28,7 @@ const CONDITION_LABEL = "Control Condition";
 
 const MAP_CENTER         = [32.888799, 39.929662];
 const SCENE_ROTATION_DEG = 21;
-const MAP_ZOOM           = 18.0;
+const MAP_ZOOM           = 17.0;
 
 const WALK_SPEED_MPS = 1.5;
 const T_STABLE       = 2000;
