@@ -10,15 +10,16 @@
  * 11–12    straight BG               PAUSE (1s)
  * 12–18    deviate EAST              straight BM
  * 18–20    straight BG               PAUSE (2s)
- * 20–26    straight BG               deviate EAST
+ * 20–26    straight BG               deviate WEST
  * 26–28    PAUSE (2s)                straight BM
  * 28–30    straight BG               PAUSE (2s)
- * 30–36    deviate BACK              straight BM
+ * 30–36    deviate WEST              straight BM
  * 36–38    straight BG               PAUSE (2s)
- * 38–44    straight BG               deviate BACK
+ * 38–44    straight BG               deviate EAST
  * 44–48    PAUSE (4s)                straight BM
  * 48–50    straight BG               PAUSE (2s)
- * 50–56    deviate WEST              straight BM
+ * 50–53    deviate EAST              deviate WEST
+ * 53–56    deviate WEST              deviate EAST
  * 56–62    straight BG               straight BM
  * ========================================================================== */
 
@@ -57,11 +58,6 @@ function buildPureDrift(totalDur, driftBearing) {
     return [{ d: totalDur, b: driftBearing }];
 }
 
-function buildPureBack(baseBearing, totalDur) {
-    const backBearing = (baseBearing + 180) % 360;
-    return [{ d: totalDur, b: backBearing }];
-}
-
 const EAST = 90;
 const WEST = 270;
 
@@ -93,12 +89,13 @@ const SCHEDULE_G = [
     { d: 6,  b: BG },                      // global 20–26  straight BG
     { d: 2,  b: null },                    // global 26–28  PAUSE (2s)
     { d: 2,  b: BG },                      // global 28–30  straight BG
-    ...buildPureBack(BG, 6),               // global 30–36  deviate BACK
+    ...buildPureDrift(6, WEST),            // global 30–36  deviate WEST
     { d: 2,  b: BG },                      // global 36–38  straight BG
     { d: 6,  b: BG },                      // global 38–44  straight BG
     { d: 4,  b: null },                    // global 44–48  PAUSE (4s)
     { d: 2,  b: BG },                      // global 48–50  straight BG
-    ...buildPureDrift(6, WEST),            // global 50–56  deviate WEST
+    ...buildPureDrift(3, EAST),            // global 50–53  deviate EAST
+    ...buildPureDrift(3, WEST),            // global 53–56  deviate WEST
     { d: 6,  b: BG },                      // global 56–62  straight BG
 ];
 
@@ -109,15 +106,16 @@ const SCHEDULE_M = [
     { d: 1,  b: null },                    // global 11–12  PAUSE (1s)
     { d: 6,  b: BM },                      // global 12–18  straight BM
     { d: 2,  b: null },                    // global 18–20  PAUSE (2s)
-    ...buildPureDrift(6, EAST),            // global 20–26  deviate EAST
+    ...buildPureDrift(6, WEST),            // global 20–26  deviate WEST
     { d: 2,  b: BM },                      // global 26–28  straight BM
     { d: 2,  b: null },                    // global 28–30  PAUSE (2s)
     { d: 6,  b: BM },                      // global 30–36  straight BM
     { d: 2,  b: null },                    // global 36–38  PAUSE (2s)
-    ...buildPureBack(BM, 6),               // global 38–44  deviate BACK
+    ...buildPureDrift(6, EAST),            // global 38–44  deviate EAST
     { d: 4,  b: BM },                      // global 44–48  straight BM
     { d: 2,  b: null },                    // global 48–50  PAUSE (2s)
-    { d: 6,  b: BM },                      // global 50–56  straight BM
+    ...buildPureDrift(3, WEST),            // global 50–53  deviate WEST
+    ...buildPureDrift(3, EAST),            // global 53–56  deviate EAST
     { d: 6,  b: BM },                      // global 56–62  straight BM
 ];
 
@@ -343,7 +341,7 @@ function bootstrap() {
                  stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
                 <circle cx="12" cy="10" r="3"></circle>
-            </svg></div>DoveApp</div>`;
+            </svg></div>DoveSeiApp</div>`;
         document.body.appendChild(hdr);
         setTimeout(() => { if (!hasSentCompletion) sendCompletionSignal("timeout"); }, ANIMATION_TIMEOUT_MS);
         requestAnimationFrame(animateNodes);
@@ -498,7 +496,7 @@ if (typeof module !== "undefined" && module.exports) {
         START_G, START_M, START_U, TARGET_G, TARGET_M,
         MAP_CENTER, MAP_ZOOM, WALK_SPEED_MPS, SCENE_ROTATION_DEG,
         T_STABLE, T_FINAL_HOLD, TOTAL_ANIMATION_DURATION,
-        agentPosition, offsetMeters, buildPureDrift, buildPureBack, calculateBearing,
+        agentPosition, offsetMeters, buildPureDrift, calculateBearing,
         EAST, WEST
     };
 }
