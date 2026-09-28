@@ -10,7 +10,7 @@
  * 11–12    straight BG               PAUSE (1s)
  * 12–18    deviate EAST              straight BM
  * 18–20    straight BG               PAUSE (2s)
- * 20–26    straight BG               deviate WEST
+ * 20–26    straight BG               deviate LEFT (342°)
  * 26–28    PAUSE (2s)                straight BM
  * 28–30    straight BG               PAUSE (2s)
  * 30–36    deviate WEST              straight BM
@@ -26,9 +26,9 @@
 const CONDITION         = "CONTROL";
 const CONDITION_LABEL = "Control Condition";
 
-const MAP_CENTER         = [32.888952, 39.929633];
+const MAP_CENTER         = [32.888799, 39.929662];
 const SCENE_ROTATION_DEG = 21;
-const MAP_ZOOM           = 17.0;
+const MAP_ZOOM           = 18.0;
 
 const WALK_SPEED_MPS = 1.5;
 const T_STABLE       = 2000;
@@ -106,7 +106,7 @@ const SCHEDULE_M = [
     { d: 1,  b: null },                    // global 11–12  PAUSE (1s)
     { d: 6,  b: BM },                      // global 12–18  straight BM
     { d: 2,  b: null },                    // global 18–20  PAUSE (2s)
-    ...buildPureDrift(6, WEST),            // global 20–26  deviate WEST
+    ...buildPureDrift(6, 342),             // global 20–26  deviate LEFT (BM-90°)
     { d: 2,  b: BM },                      // global 26–28  straight BM
     { d: 2,  b: null },                    // global 28–30  PAUSE (2s)
     { d: 6,  b: BM },                      // global 30–36  straight BM
@@ -461,24 +461,26 @@ function bootstrap() {
                     { type: "Feature", geometry: { type: "LineString", coordinates: [[32.888292,39.930351],[32.887327,39.930721]] } }
                 ]}});
 
-                let firstRoadCoreId = null, firstBuildingOrTextId = null;
+                let firstRoadLayerId = null;
                 for (const l of map.getStyle().layers) {
-                    const id = (l.id || "").toLowerCase(), sl = (l["source-layer"] || "").toLowerCase();
-                    if (!firstBuildingOrTextId && (l.type==="symbol" || sl==="building" || l.type==="fill-extrusion")) firstBuildingOrTextId = l.id;
-                    if (sl==="transportation" && l.type==="line" && !/casing|outline|bridge|tunnel/.test(id) && !firstRoadCoreId) firstRoadCoreId = l.id;
+                    const sl = (l["source-layer"] || "").toLowerCase();
+                    if (sl === "transportation") {
+                        firstRoadLayerId = l.id;
+                        break;
+                    }
                 }
 
                 map.addLayer({
                     id: "virtual-roads-casing", type: "line", source: "virtual-roads",
                     layout: { "line-join": "round", "line-cap": "round" },
                     paint: { "line-color": "#e4dfd3", "line-width": 12 }
-                }, firstRoadCoreId || firstBuildingOrTextId);
+                }, firstRoadLayerId);
 
                 map.addLayer({
                     id: "virtual-roads-core", type: "line", source: "virtual-roads",
                     layout: { "line-join": "round", "line-cap": "round" },
                     paint: { "line-color": "#ffffff", "line-width": 8 }
-                }, firstBuildingOrTextId);
+                }, firstRoadLayerId);
 
                 map.getCanvas().style.filter = "none";
             });
