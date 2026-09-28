@@ -26,7 +26,7 @@
 const CONDITION         = "CONTROL";
 const CONDITION_LABEL = "Control Condition";
 
-const MAP_CENTER         = [32.888901, 39.929606];
+const MAP_CENTER         = [32.888952, 39.929633];
 const SCENE_ROTATION_DEG = 21;
 const MAP_ZOOM           = 17.2;
 
