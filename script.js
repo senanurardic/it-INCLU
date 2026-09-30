@@ -22,20 +22,16 @@
  * 53–56    deviate WEST              deviate EAST
  * 56–62    straight BG               straight BM
  * ========================================================================== */
-
 const CONDITION         = "CONTROL";
 const CONDITION_LABEL = "Control Condition";
-
 const MAP_CENTER         = [32.888799, 39.929662];
 const SCENE_ROTATION_DEG = 21;
-const MAP_ZOOM           = 17.0;
-
-const WALK_SPEED_MPS = 1.5;
+const MAP_ZOOM           = 16.4;
+const WALK_SPEED_MPS = 1.8;
 const T_STABLE       = 2000;
 const T_FINAL_HOLD   = 3000;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
 function calculateBearing(start, end) {
     const r = d => d * Math.PI / 180;
     const dLng = r(end[0] - start[0]);
@@ -46,6 +42,7 @@ function calculateBearing(start, end) {
 }
 
 const EARTH_RADIUS_M = 6378137;
+
 function offsetMeters(origin, bearingDeg, meters) {
     const b = bearingDeg * Math.PI / 180;
     const dLat = (meters * Math.cos(b) / EARTH_RADIUS_M) * 180 / Math.PI;
@@ -62,23 +59,18 @@ const EAST = 90;
 const WEST = 270;
 
 // ── Locations ─────────────────────────────────────────────────────────────────
-
 const START_G = [32.888409, 39.929681];
 const START_M = [32.889090, 39.929422];
 const START_U = [32.888559, 39.929150];
-
 const TARGET_G = [32.888455, 39.930278];
 const TARGET_M = [32.890168, 39.929707];
-
 const ROAD_START    = [32.888752, 39.929566];
 const ROAD_TARGET_1 = [32.888541, 39.930241];
 const ROAD_TARGET_2 = [32.889835, 39.929885];
-
 const BG = calculateBearing(START_G, TARGET_G);
 const BM = calculateBearing(START_M, TARGET_M);
 
 // ── Schedules ─────────────────────────────────────────────────────────────────
-
 const SCHEDULE_G = [
     { d: 2,  b: null },                    // global  0– 2  pause
     { d: 6,  b: BG },                      // global  2– 8  straight BG
@@ -120,14 +112,16 @@ const SCHEDULE_M = [
 ];
 
 // ── Runtime ───────────────────────────────────────────────────────────────────
-
 function scheduleTotalSeconds(s) { return s.reduce((a, seg) => a + seg.d, 0); }
-
 const ACTIVE_MS_G = scheduleTotalSeconds(SCHEDULE_G) * 1000;
 const ACTIVE_MS_M = scheduleTotalSeconds(SCHEDULE_M) * 1000;
 const TOTAL_ANIMATION_DURATION = T_STABLE + Math.max(ACTIVE_MS_G, ACTIVE_MS_M) + T_FINAL_HOLD;
 
-const positions = { leftNode: START_G, rightNode: START_M, mainNode: START_U };
+let userPos = [...START_U];
+let moveInterval = null;
+let currentDirectionBtn = null;
+
+const positions = { leftNode: START_G, rightNode: START_M, mainNode: userPos };
 const people = [
     { id: "leftNode",  markerType: "grey-letter-dot", initial: "G" },
     { id: "rightNode", markerType: "grey-letter-dot", initial: "M" },
@@ -227,6 +221,7 @@ function buildPayload(reason) {
         status: "complete", reason, elapsedMs: TOTAL_ANIMATION_DURATION, timestamp: Date.now()
     };
 }
+
 function sendCompletionSignal(reason) {
     if (hasSentCompletion) return; hasSentCompletion = true;
     try { if (window.parent) window.parent.postMessage(buildPayload(reason), "*"); }
@@ -270,21 +265,21 @@ function injectUIDesignStyles() {
         .logo-icon-wrapper svg { color:#2b6cb0 }
         #container { width:100%; height:100%; position:relative }
         #map { width:100%; height:100% }
-        .experimental-grey-letter-dot { width:37.8px; height:37.8px; background:#64748b;
-            color:#fff; border:2.25px solid #fff; border-radius:50%; display:flex;
-            align-items:center; justify-content:center; font-weight:700; font-size:17px;
-            box-shadow:0 3px 8px rgba(0,0,0,.3) }
-        .google-maps-dot-container { position:relative; width:48px; height:48px;
+        .experimental-grey-letter-dot { width:28.35px; height:28.35px; background:#64748b;
+            color:#fff; border:1.6875px solid #fff; border-radius:50%; display:flex;
+            align-items:center; justify-content:center; font-weight:700; font-size:12.75px;
+            box-shadow:0 2.25px 6px rgba(0,0,0,.3) }
+        .google-maps-dot-container { position:relative; width:36px; height:36px;
             display:flex; align-items:center; justify-content:center }
-        .google-maps-pulse { position:absolute; width:48px; height:48px;
+        .google-maps-pulse { position:absolute; width:36px; height:36px;
             background:rgba(66,133,244,.4); border-radius:50%;
             animation:google-pulse 2s infinite ease-out }
-        .google-maps-core { position:relative; width:21px; height:21px; background:#4285F4;
-            border:3px solid #fff; border-radius:50%; box-shadow:0 3px 8px rgba(0,0,0,.35) }
+        .google-maps-core { position:relative; width:15.75px; height:15.75px; background:#4285F4;
+            border:2.25px solid #fff; border-radius:50%; box-shadow:0 2.25px 6px rgba(0,0,0,.35) }
         @keyframes google-pulse { 0%{transform:scale(.6);opacity:1} 100%{transform:scale(2.2);opacity:0} }
-        .agent-label { position:absolute; bottom:-24px; background:rgba(255,255,255,.95);
-            padding:3px 9px; border-radius:6px; font-size:12px; font-weight:600; color:#1a1a1a;
-            box-shadow:0 2px 6px rgba(0,0,0,.15); white-space:nowrap }
+        .agent-label { position:absolute; bottom:-21px; background:rgba(255,255,255,.95);
+            padding:2px 7px; border-radius:5px; font-size:11px; font-weight:600; color:#1a1a1a;
+            box-shadow:0 1px 5px rgba(0,0,0,.15); white-space:nowrap }
         .login-container { display:flex; flex-direction:column; align-items:center; gap:16px; width:300px }
         .instruction { font-size:15px; color:#374151; text-align:center; margin:0; line-height:1.5 }
         #nickname-input { width:100%; padding:12px 16px; border:1px solid #cbd5e1; border-radius:12px;
@@ -295,6 +290,55 @@ function injectUIDesignStyles() {
             border-radius:50%; font-size:20px; cursor:pointer; display:flex; align-items:center;
             justify-content:center; transition:background .2s,transform .1s }
         #submit-btn:active { transform:scale(.96); background:#2c5282 }
+        
+        /* ── D-Pad / Kumanda Tasarımı (Interactive kottan alındı) ── */
+        #d-pad {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 104px;
+            height: 104px;
+            background: var(--brand-green);
+            border-radius: 50%;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06);
+            border: 2px solid rgba(255, 255, 255, 0.9);
+            z-index: 2500;
+            cursor: pointer;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            transition: transform 0.1s ease, box-shadow 0.1s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #d-pad:active, #d-pad.active {
+            transform: translateX(-50%) scale(0.95);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+            background: #c8e6cb;
+        }
+        .pad-indicator {
+            position: absolute;
+            color: rgba(45, 55, 72, 0.65);
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.15s ease;
+        }
+        #d-pad:active .pad-indicator, #d-pad.active .pad-indicator {
+            color: rgba(26, 32, 44, 0.9);
+        }
+        .ind-n  { top: 5px; left: 50%; transform: translateX(-50%); font-size: 12px; }
+        .ind-ne { top: 16px; right: 16px; font-size: 8px; }
+        .ind-e  { right: 6px; top: 50%; transform: translateY(-50%); font-size: 12px; }
+        .ind-se { bottom: 16px; right: 16px; font-size: 8px; }
+        .ind-s  { bottom: 5px; left: 50%; transform: translateX(-50%); font-size: 12px; }
+        .ind-sw { bottom: 16px; left: 16px; font-size: 8px; }
+        .ind-w  { left: 6px; top: 50%; transform: translateY(-50%); font-size: 12px; }
+        .ind-nw { top: 16px; left: 16px; font-size: 8px; }
     `;
     document.head.appendChild(style);
 }
@@ -343,8 +387,27 @@ function bootstrap() {
                 <circle cx="12" cy="10" r="3"></circle>
             </svg></div>DoveSeiApp</div>`;
         document.body.appendChild(hdr);
+
+        if (!document.getElementById("d-pad")) {
+            const dpad = document.createElement('div');
+            dpad.id = 'd-pad';
+            dpad.setAttribute('aria-label', "Area di controllo del movimento");
+            dpad.innerHTML = `
+                <span class="pad-indicator ind-n">&#9650;</span>
+                <span class="pad-indicator ind-ne">&bull;</span>
+                <span class="pad-indicator ind-e">&#9654;</span>
+                <span class="pad-indicator ind-se">&bull;</span>
+                <span class="pad-indicator ind-s">&#9660;</span>
+                <span class="pad-indicator ind-sw">&bull;</span>
+                <span class="pad-indicator ind-w">&#9664;</span>
+                <span class="pad-indicator ind-nw">&bull;</span>
+            `;
+            document.body.appendChild(dpad);
+        }
+
         setTimeout(() => { if (!hasSentCompletion) sendCompletionSignal("timeout"); }, ANIMATION_TIMEOUT_MS);
         requestAnimationFrame(animateNodes);
+        setupMovementControls();
     }
 
     function handleLoginSubmit() {
@@ -422,7 +485,7 @@ function bootstrap() {
                 if (isG) { if (t==="fill") { paint(id,"fill-color",PAL.green); paint(id,"fill-opacity",1); } if (t==="line") paint(id,"line-color",PAL.greenDeep); return; }
                 if (sl==="landcover") { if (t==="fill") { paint(id,"fill-color",PAL.greenSoft); paint(id,"fill-opacity",.9); } return; }
                 if (sl==="landuse")   { if (t==="fill") paint(id,"fill-color",PAL.land); return; }
-                if (sl==="building")  { if (t==="fill") { paint(id,"fill-color",PAL.building); paint(id,"fill-opacity",.85); } return; }
+                if (sl==="building")  { if (t === "fill") { paint(id,"fill-color",PAL.building); paint(id,"fill-opacity",.85); } return; }
                 if (sl==="transportation") { if (t==="line") paint(id,"line-color",/casing|outline|bridge|tunnel/.test(id)?PAL.roadCase:PAL.road); return; }
                 if (t==="symbol") { paint(id,"text-color",PAL.text); paint(id,"text-halo-color",PAL.textHalo); paint(id,"text-halo-width",1.4); }
             });
@@ -454,8 +517,17 @@ function bootstrap() {
                 declutterBasemap(); applyFindMyPalette();
 
                 map.addSource("virtual-roads", { type: "geojson", data: { type: "FeatureCollection", features: [
-                    { type: "Feature", geometry: { type: "LineString", coordinates: [START_G, TARGET_G] } },
-                    { type: "Feature", geometry: { type: "LineString", coordinates: [START_M, TARGET_M] } },
+                    { type: "Feature", geometry: { type: "LineString", coordinates: [
+                        [32.888409, 39.929681],
+                        [32.887900, 39.931650],
+                        [32.887550, 39.933000]
+                    ] } },
+                    { type: "Feature", geometry: { type: "LineString", coordinates: [
+                        [32.889090, 39.929422],
+                        [32.890168, 39.929707],
+                        [32.891200, 39.930400],
+                        [32.892400, 39.931400]
+                    ] } },
                     { type: "Feature", geometry: { type: "LineString", coordinates: [ROAD_START, ROAD_TARGET_1] } },
                     { type: "Feature", geometry: { type: "LineString", coordinates: [ROAD_START, ROAD_TARGET_2] } },
                     { type: "Feature", geometry: { type: "LineString", coordinates: [[32.888292,39.930351],[32.887327,39.930721]] } }
@@ -488,6 +560,101 @@ function bootstrap() {
             map.on("error", () => { if (!mapHasLoaded) showMapLoadFallback(); });
         }
     } catch(e) { showMapLoadFallback(); }
+}
+
+function setupMovementControls() {
+    const TICK_RATE_MS = 30; 
+    const METERS_PER_TICK = (WALK_SPEED_MPS / 1000) * TICK_RATE_MS;
+
+    const keyDirections = {
+        'ArrowUp': (0 + SCENE_ROTATION_DEG) % 360, 
+        'ArrowRight': (90 + SCENE_ROTATION_DEG) % 360, 
+        'ArrowDown': (180 + SCENE_ROTATION_DEG) % 360, 
+        'ArrowLeft': (270 + SCENE_ROTATION_DEG) % 360
+    };
+
+    const moveStep = (bearing) => {
+        userPos = offsetMeters(userPos, bearing, METERS_PER_TICK);
+        positions["mainNode"] = userPos;
+        
+        if (markerInstances["mainNode"]) {
+            markerInstances["mainNode"].setLngLat(userPos);
+        }
+        if (map) {
+            map.easeTo({ center: userPos, duration: TICK_RATE_MS, easing: (t) => t });
+        }
+    };
+
+    const startMove = (bearing, identifier) => {
+        if (moveInterval) clearInterval(moveInterval);
+        currentDirectionBtn = identifier;
+        
+        const touchpad = document.getElementById('d-pad');
+        if (touchpad) touchpad.classList.add('active');
+
+        moveStep(bearing);
+        moveInterval = setInterval(() => moveStep(bearing), TICK_RATE_MS);
+    };
+
+    const stopMove = (identifier) => {
+        if (currentDirectionBtn !== identifier && identifier !== 'ALL') return;
+        
+        if (moveInterval) {
+            clearInterval(moveInterval);
+            moveInterval = null;
+            currentDirectionBtn = null;
+        }
+        const touchpad = document.getElementById('d-pad');
+        if (touchpad) touchpad.classList.remove('active');
+    };
+
+    const handleTouchpadInteraction = (clientX, clientY, identifier) => {
+        const touchpad = document.getElementById('d-pad');
+        if (!touchpad) return;
+        const rect = touchpad.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        const dx = clientX - centerX;
+        const dy = clientY - centerY; 
+
+        let angleDeg = Math.atan2(dx, -dy) * (180 / Math.PI);
+        if (angleDeg < 0) angleDeg += 360;
+
+        const bearing = (angleDeg + SCENE_ROTATION_DEG) % 360;
+        startMove(bearing, identifier);
+    };
+
+    const touchpad = document.getElementById('d-pad');
+    if (touchpad) {
+        touchpad.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            handleTouchpadInteraction(e.clientX, e.clientY, 'mouse');
+        });
+
+        touchpad.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleTouchpadInteraction(touch.clientX, touch.clientY, 'touch');
+        }, { passive: false });
+
+        window.addEventListener('mouseup', () => stopMove('mouse'));
+        touchpad.addEventListener('mouseleave', () => stopMove('mouse'));
+        window.addEventListener('touchend', (e) => {
+            if (e.touches.length === 0) stopMove('touch');
+        });
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (keyDirections[e.key] !== undefined && currentDirectionBtn !== e.key) {
+            startMove(keyDirections[e.key], e.key);
+        }
+    });
+    window.addEventListener('keyup', (e) => {
+        if (keyDirections[e.key] !== undefined) {
+            stopMove(e.key);
+        }
+    });
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") bootstrap();
