@@ -27,7 +27,7 @@ const CONDITION_LABEL = "Control Condition";
 const MAP_CENTER         = [32.888799, 39.929662];
 const SCENE_ROTATION_DEG = 21;
 const MAP_ZOOM           = 16.4;
-const WALK_SPEED_MPS = 1.8;
+const WALK_SPEED_MPS = 2.8;
 const T_STABLE       = 2000;
 const T_FINAL_HOLD   = 3000;
 
