@@ -1,35 +1,64 @@
 /* ============================================================================
  * LOCATION-SHARING SOCIAL DISCONNECTION PARADIGM
- * Condition: CONTROL — G and M diverge (total ~65s)
+ * Condition: CONTROL (G and M approach the user's start point, total ~65s)
  *
- * ── MOVEMENT TABLE (global seconds) ────────────────────────────────────────
+ * G ve M, aynı pause/deviation zamanlamasıyla, SABİT yürüme hızında
+ * (WALK_SPEED_MPS, ikisi için de eşit) yürüyerek 62 sn sonunda START_U'nun
+ * (blue dot başlangıcı) hemen yanında, birbirine değip duran ama birbirini
+ * kaplamayan iki noktada son buluyor.
+ *
+ * Nasıl çalışıyor:
+ *  1. REF_SCHEDULE_* eski hareket şablonudur (zamanlama + şekil); şablonun
+ *     net yer değiştirme vektörünün BOYU, hız sabit olduğu için sabittir.
+ *  2. TARGET_G / TARGET_M, START_U'nun hemen solunda ve sağında (ekranda
+ *     yan yana görünecek şekilde, harita dönüşüne göre hesaplanmış), gri
+ *     marker'ların tam olarak birbirine dokunduğu (overlap etmeyen) iki
+ *     noktadır.
+ *  3. Şablon, eski rotanın genel yönünü (REF_START -> TARGET) koruyacak
+ *     şekilde döndürülür (ölçeklenmez — hız sabit kalır), sonra
+ *     START_G / START_M bu döndürülmüş vektör TARGET'a denk gelecek şekilde
+ *     GERİYE doğru hesaplanır (başlangıç noktası hedefe göre ayarlanır).
+ *     Böylece deviation'lar yürüme yönüne göre aynı tarafta kalır, pause'lar
+ *     birebir korunur ve bitiş noktası matematiksel olarak TARGET'a denk
+ *     gelir.
+ *
+ * ── MOVEMENT TABLE (global seconds, yönler yürüme yönüne göredir) ───────────
  *  t         G                         M
  *  0– 2    pause                     pause
- *  2– 8    straight BG               deviate EAST
- *  8–11    PAUSE (3s)                straight BM
- * 11–12    straight BG               PAUSE (1s)
- * 12–18    deviate EAST              straight BM
- * 18–20    straight BG               PAUSE (2s)
- * 20–26    straight BG               deviate WEST (342°)
- * 26–28    PAUSE (2s)                straight BM
- * 28–30    straight BG               PAUSE (2s)
- * 30–36    deviate WEST              straight BM
- * 36–38    straight BG               PAUSE (2s)
- * 38–44    straight BG               deviate EAST
- * 44–48    PAUSE (4s)                straight BM
- * 48–50    straight BG               PAUSE (2s)
- * 50–53    deviate EAST              deviate WEST
- * 53–56    deviate WEST              deviate EAST
- * 56–62    straight BG               straight BM
+ *  2– 8    straight                  deviate (ref EAST)
+ *  8–11    PAUSE (3s)                straight
+ * 11–12    straight                  PAUSE (1s)
+ * 12–18    deviate (ref EAST)        straight
+ * 18–20    straight                  PAUSE (2s)
+ * 20–26    straight                  deviate (ref 342°)
+ * 26–28    PAUSE (2s)                straight
+ * 28–30    straight                  PAUSE (2s)
+ * 30–36    deviate (ref WEST)        straight
+ * 36–38    straight                  PAUSE (2s)
+ * 38–44    straight                  deviate (ref EAST)
+ * 44–48    PAUSE (4s)                straight
+ * 48–50    straight                  PAUSE (2s)
+ * 50–53    deviate (ref EAST)        deviate (ref WEST)
+ * 53–56    deviate (ref WEST)        deviate (ref EAST)
+ * 56–62    straight                  straight   -> G ve M, START_U'nun iki
+ *                                                   yanında birbirine değer
  * ========================================================================== */
 const CONDITION         = "CONTROL";
 const CONDITION_LABEL = "Control Condition";
 const MAP_CENTER         = [32.888799, 39.929662];
 const SCENE_ROTATION_DEG = 21;
-const MAP_ZOOM           = 16.4;
-const WALK_SPEED_MPS = 2.8;
+const MAP_ZOOM           = 16.0;
+const WALK_SPEED_MPS = 1.8;   // G ve M için sabit, ortak yürüme hızı
 const T_STABLE       = 2000;
 const T_FINAL_HOLD   = 3000;
+
+// Grey marker'ın render edilen gerçek çapı (CSS: width 28.35px + border 1.6875px*2,
+// content-box varsayılan box-sizing ile border genişliğe eklenir).
+const GREY_MARKER_RENDERED_PX = 28.35 + 2 * 1.6875; // = 31.725px
+// G ve M birbirine "en fazla değecek" ama kaplamayacak şekilde durması için
+// merkezden merkeze mesafe = marker çapı (= yarıçapların toplamı, eşit boyut
+// oldukları için) + görünür bir boşluk payı (ikonların kenarları net ayrılsın).
+const TOUCH_GAP_PX = GREY_MARKER_RENDERED_PX + 6; // ~37.7px merkez-merkez
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function calculateBearing(start, end) {
@@ -42,6 +71,7 @@ function calculateBearing(start, end) {
 }
 
 const EARTH_RADIUS_M = 6378137;
+const M_PER_DEG_LAT  = Math.PI * EARTH_RADIUS_M / 180;
 
 function offsetMeters(origin, bearingDeg, meters) {
     const b = bearingDeg * Math.PI / 180;
@@ -49,6 +79,22 @@ function offsetMeters(origin, bearingDeg, meters) {
     const dLng = (meters * Math.sin(b) /
         (EARTH_RADIUS_M * Math.cos(origin[1] * Math.PI / 180))) * 180 / Math.PI;
     return [origin[0] + dLng, origin[1] + dLat];
+}
+
+// Local flat metric frame (x = east m, y = north m) around a reference point
+function toXY(p, ref) {
+    const k = Math.cos(ref[1] * Math.PI / 180);
+    return [(p[0] - ref[0]) * M_PER_DEG_LAT * k, (p[1] - ref[1]) * M_PER_DEG_LAT];
+}
+function fromXY(xy, ref) {
+    const k = Math.cos(ref[1] * Math.PI / 180);
+    return [ref[0] + xy[0] / (M_PER_DEG_LAT * k), ref[1] + xy[1] / M_PER_DEG_LAT];
+}
+function vecBearing(v) { return (Math.atan2(v[0], v[1]) * 180 / Math.PI + 360) % 360; }
+
+// Haritanın ekran-piksel/metre oranı (Web Mercator), MAP_ZOOM ve enlem için.
+function metersPerPixel(lat, zoom) {
+    return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
 }
 
 function buildPureDrift(totalDur, driftBearing) {
@@ -59,57 +105,123 @@ const EAST = 90;
 const WEST = 270;
 
 // ── Locations ─────────────────────────────────────────────────────────────────
-const START_G = [32.888409, 39.929681];
-const START_M = [32.889090, 39.929422];
+// Original starting points: only used to reconstruct the old routes' end points
+const REF_START_G  = [32.888409, 39.929681];
+const REF_START_M  = [32.889090, 39.929422];
+const REF_TARGET_G = [32.888455, 39.930278];
+const REF_TARGET_M = [32.890168, 39.929707];
 const START_U = [32.888559, 39.929150];
-const TARGET_G = [32.888455, 39.930278];
-const TARGET_M = [32.890168, 39.929707];
 const ROAD_START    = [32.888752, 39.929566];
 const ROAD_TARGET_1 = [32.888541, 39.930241];
 const ROAD_TARGET_2 = [32.889835, 39.929885];
-const BG = calculateBearing(START_G, TARGET_G);
-const BM = calculateBearing(START_M, TARGET_M);
+const BG = calculateBearing(REF_START_G, REF_TARGET_G);
+const BM = calculateBearing(REF_START_M, REF_TARGET_M);
 
-// ── Schedules ─────────────────────────────────────────────────────────────────
-const SCHEDULE_G = [
+// ── Reference schedules (original timing & shape, unchanged) ────────────────
+const REF_SCHEDULE_G = [
     { d: 2,  b: null },                    // global  0– 2  pause
-    { d: 6,  b: BG },                      // global  2– 8  straight BG
+    { d: 6,  b: BG },                      // global  2– 8  straight
     { d: 3,  b: null },                    // global  8–11  PAUSE (3s)
-    { d: 1,  b: BG },                      // global 11–12  straight BG
-    ...buildPureDrift(6, EAST),            // global 12–18  deviate EAST
-    { d: 2,  b: BG },                      // global 18–20  straight BG
-    { d: 6,  b: BG },                      // global 20–26  straight BG
+    { d: 1,  b: BG },                      // global 11–12  straight
+    ...buildPureDrift(6, EAST),            // global 12–18  deviate
+    { d: 2,  b: BG },                      // global 18–20  straight
+    { d: 6,  b: BG },                      // global 20–26  straight
     { d: 2,  b: null },                    // global 26–28  PAUSE (2s)
-    { d: 2,  b: BG },                      // global 28–30  straight BG
-    ...buildPureDrift(6, WEST),            // global 30–36  deviate WEST
-    { d: 2,  b: BG },                      // global 36–38  straight BG
-    { d: 6,  b: BG },                      // global 38–44  straight BG
+    { d: 2,  b: BG },                      // global 28–30  straight
+    ...buildPureDrift(6, WEST),            // global 30–36  deviate
+    { d: 2,  b: BG },                      // global 36–38  straight
+    { d: 6,  b: BG },                      // global 38–44  straight
     { d: 4,  b: null },                    // global 44–48  PAUSE (4s)
-    { d: 2,  b: BG },                      // global 48–50  straight BG
-    ...buildPureDrift(3, EAST),            // global 50–53  deviate EAST
-    ...buildPureDrift(3, WEST),            // global 53–56  deviate WEST
-    { d: 6,  b: BG },                      // global 56–62  straight BG
+    { d: 2,  b: BG },                      // global 48–50  straight
+    ...buildPureDrift(3, EAST),            // global 50–53  deviate
+    ...buildPureDrift(3, WEST),            // global 53–56  deviate
+    { d: 6,  b: BG },                      // global 56–62  straight
 ];
 
-const SCHEDULE_M = [
+const REF_SCHEDULE_M = [
     { d: 2,  b: null },                    // global  0– 2  pause
-    ...buildPureDrift(6, EAST),            // global  2– 8  deviate EAST
-    { d: 3,  b: BM },                      // global  8–11  straight BM
+    ...buildPureDrift(6, EAST),            // global  2– 8  deviate
+    { d: 3,  b: BM },                      // global  8–11  straight
     { d: 1,  b: null },                    // global 11–12  PAUSE (1s)
-    { d: 6,  b: BM },                      // global 12–18  straight BM
+    { d: 6,  b: BM },                      // global 12–18  straight
     { d: 2,  b: null },                    // global 18–20  PAUSE (2s)
-    ...buildPureDrift(6, 342),             // global 20–26  deviate LEFT (BM-90°)
-    { d: 2,  b: BM },                      // global 26–28  straight BM
+    ...buildPureDrift(6, 342),             // global 20–26  deviate (BM-90°)
+    { d: 2,  b: BM },                      // global 26–28  straight
     { d: 2,  b: null },                    // global 28–30  PAUSE (2s)
-    { d: 6,  b: BM },                      // global 30–36  straight BM
+    { d: 6,  b: BM },                      // global 30–36  straight
     { d: 2,  b: null },                    // global 36–38  PAUSE (2s)
-    ...buildPureDrift(6, EAST),            // global 38–44  deviate EAST
-    { d: 4,  b: BM },                      // global 44–48  straight BM
+    ...buildPureDrift(6, EAST),            // global 38–44  deviate
+    { d: 4,  b: BM },                      // global 44–48  straight
     { d: 2,  b: null },                    // global 48–50  PAUSE (2s)
-    ...buildPureDrift(3, WEST),            // global 50–53  deviate WEST
-    ...buildPureDrift(3, EAST),            // global 53–56  deviate EAST
-    { d: 6,  b: BM },                      // global 56–62  straight BM
+    ...buildPureDrift(3, WEST),            // global 50–53  deviate
+    ...buildPureDrift(3, EAST),            // global 53–56  deviate
+    { d: 6,  b: BM },                      // global 56–62  straight
 ];
+
+// ── Old route end points: sadece yaklaşma yönünü belirlemek için referans ────
+function refEndPoint(startPos, segments) {
+    let pos = startPos;
+    for (const seg of segments)
+        if (seg.b !== null) pos = offsetMeters(pos, seg.b, WALK_SPEED_MPS * seg.d);
+    return pos;
+}
+const OLD_ROUTE_END_G = refEndPoint(REF_START_G, REF_SCHEDULE_G);
+const OLD_ROUTE_END_M = refEndPoint(REF_START_M, REF_SCHEDULE_M);
+
+// ── Final targets: START_U'nun iki yanında, grey marker'lar birbirine
+// değecek (TOUCH_GAP_PX) ama kaplamayacak şekilde, ekranda yan yana ─────────
+const MPP = metersPerPixel(START_U[1], MAP_ZOOM);
+const TOUCH_GAP_M = TOUCH_GAP_PX * MPP;
+const HALF_GAP_M  = TOUCH_GAP_M / 2;
+// Harita SCENE_ROTATION_DEG kadar döndürülmüş durumda: ekranın "sağı" coğrafi
+// olarak (SCENE_ROTATION_DEG + 90°) yönüne, "solu" ise +270° yönüne denk gelir.
+const SCREEN_RIGHT_BEARING = (SCENE_ROTATION_DEG + 90) % 360;
+const SCREEN_LEFT_BEARING  = (SCENE_ROTATION_DEG + 270) % 360;
+const TARGET_G = offsetMeters(START_U, SCREEN_LEFT_BEARING,  HALF_GAP_M); // leftNode
+const TARGET_M = offsetMeters(START_U, SCREEN_RIGHT_BEARING, HALF_GAP_M); // rightNode
+
+// ── Approach schedules: şablon döndürülür (yön eski rotayla aynı kalır),
+// hız SABİT (WALK_SPEED_MPS) tutulur; başlangıç noktası, döndürülmüş
+// şablon tam olarak TARGET'a denk gelecek şekilde GERİYE hesaplanır.
+function buildApproachSchedule(refSchedule, oldRouteEnd, targetPos) {
+    // net displacement of the template at the fixed walking speed (meters)
+    let L = [0, 0];
+    for (const s of refSchedule) {
+        if (s.b === null) continue;
+        const r = s.b * Math.PI / 180, m = WALK_SPEED_MPS * s.d;
+        L = [L[0] + m * Math.sin(r), L[1] + m * Math.cos(r)];
+    }
+    // Yön: eski rotanın bitişinden hedefe olan yön (büyüklüğü değil, sadece
+    // açısı kullanılır) — "tersten" yaklaşma hissi böyle korunur.
+    const oldEndXY = toXY(oldRouteEnd, targetPos);
+    const D = [-oldEndXY[0], -oldEndXY[1]];            // oldRouteEnd -> target yönü
+    const rot = (vecBearing(D) - vecBearing(L) + 360) % 360;
+
+    // Şablon vektörü rot kadar döndürülür (büyüklüğü sabit kalır, ölçeklenmez).
+    const Lmag = Math.hypot(L[0], L[1]);
+    const Lbearing = vecBearing(L);
+    const fRad = (Lbearing + rot) * Math.PI / 180;
+    const F = [Lmag * Math.sin(fRad), Lmag * Math.cos(fRad)];
+
+    // START = TARGET - F  (metrik çerçeve TARGET merkezli; TARGET_xy = [0,0])
+    const startPos = fromXY([-F[0], -F[1]], targetPos);
+
+    return {
+        startPos,
+        rotationDeg: rot,
+        speed: WALK_SPEED_MPS,
+        segments: refSchedule.map(s => s.b === null
+            ? { d: s.d, b: null }
+            : { d: s.d, b: (s.b + rot + 360) % 360 })
+    };
+}
+
+const APPROACH_G = buildApproachSchedule(REF_SCHEDULE_G, OLD_ROUTE_END_G, TARGET_G);
+const APPROACH_M = buildApproachSchedule(REF_SCHEDULE_M, OLD_ROUTE_END_M, TARGET_M);
+const START_G = APPROACH_G.startPos;
+const START_M = APPROACH_M.startPos;
+const SCHEDULE_G = APPROACH_G.segments;
+const SCHEDULE_M = APPROACH_M.segments;
 
 // ── Runtime ───────────────────────────────────────────────────────────────────
 function scheduleTotalSeconds(s) { return s.reduce((a, seg) => a + seg.d, 0); }
@@ -128,13 +240,18 @@ const people = [
     { id: "mainNode",  markerType: "blue-pulse-dot"  }
 ];
 
-function buildWaypoints(startPos, segments) {
-    let pos = startPos, t = 0;
-    const keys = [{ t: 0, pos }];
+// Waypoints built in a flat metric frame centered on the target, so the last
+// waypoint lands exactly on the target.
+function buildWaypoints(startPos, segments, speed, ref) {
+    let xy = toXY(startPos, ref), t = 0;
+    const keys = [{ t: 0, pos: startPos }];
     for (const seg of segments) {
         t += seg.d * 1000;
-        if (seg.b !== null) pos = offsetMeters(pos, seg.b, WALK_SPEED_MPS * seg.d);
-        keys.push({ t, pos });
+        if (seg.b !== null) {
+            const r = seg.b * Math.PI / 180, m = speed * seg.d;
+            xy = [xy[0] + m * Math.sin(r), xy[1] + m * Math.cos(r)];
+        }
+        keys.push({ t, pos: fromXY(xy, ref) });
     }
     return keys;
 }
@@ -154,8 +271,8 @@ function positionAt(keys, tMs) {
     return keys[keys.length - 1].pos;
 }
 
-const WAYPOINTS_G = buildWaypoints(START_G, SCHEDULE_G);
-const WAYPOINTS_M = buildWaypoints(START_M, SCHEDULE_M);
+const WAYPOINTS_G = buildWaypoints(START_G, SCHEDULE_G, WALK_SPEED_MPS, TARGET_G);
+const WAYPOINTS_M = buildWaypoints(START_M, SCHEDULE_M, WALK_SPEED_MPS, TARGET_M);
 
 function agentPosition(who, elapsedMs) {
     const keys    = (who === "G") ? WAYPOINTS_G : WAYPOINTS_M;
@@ -662,10 +779,14 @@ if (typeof window !== "undefined" && typeof document !== "undefined") bootstrap(
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         CONDITION, CONDITION_LABEL, SCHEDULE_G, SCHEDULE_M,
+        REF_SCHEDULE_G, REF_SCHEDULE_M, APPROACH_G, APPROACH_M,
+        OLD_ROUTE_END_G, OLD_ROUTE_END_M,
         START_G, START_M, START_U, TARGET_G, TARGET_M,
         MAP_CENTER, MAP_ZOOM, WALK_SPEED_MPS, SCENE_ROTATION_DEG,
+        TOUCH_GAP_M, TOUCH_GAP_PX, MPP,
         T_STABLE, T_FINAL_HOLD, TOTAL_ANIMATION_DURATION,
         agentPosition, offsetMeters, buildPureDrift, calculateBearing,
+        metersPerPixel, toXY, fromXY,
         EAST, WEST
     };
 }
