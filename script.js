@@ -46,7 +46,7 @@ const CONDITION         = "INCLU";
 const CONDITION_LABEL = "Inclusion Condition";
 const MAP_CENTER         = [32.888799, 39.929662];
 const SCENE_ROTATION_DEG = 21;
-const MAP_ZOOM           = 16.6;
+const MAP_ZOOM           = 16.4;
 const WALK_SPEED_MPS = 1.8;      // reference speed; also the blue dot's manual (d-pad/arrow-key) walking speed
 const GM_WALK_SPEED_MPS = 2.25;  // shared, constant speed for BOTH G and M (higher than the
                                   // reference speed so they start further back within the same 62s)
