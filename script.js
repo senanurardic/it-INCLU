@@ -1,14 +1,7 @@
 /* ============================================================================
  * LOCATION-SHARING SOCIAL DISCONNECTION PARADIGM
- * Condition: CONTROL (G and M approach the user's start point, 62s total)
+ * Condition: INCLU (G and M approach the user's start point, 62s total)
  *
- * G and M walk in with the SAME pause/deviation timing as before, both at the
- * SAME, constant walking speed (GM_WALK_SPEED_MPS — identical for both, so
- * neither one visibly walks faster than the other). They start a bit further
- * back than the template's "natural" length would put them, and still land,
- * at exactly t=62s, right next to START_U (the blue dot's starting position),
- * standing side by side — just touching each other, not overlapping, so both
- * icons stay fully visible.
  *
  * How it works:
  *  1. REF_SCHEDULE_* is the original 62-second movement template (timing +
@@ -49,9 +42,9 @@
  * 56–62    move                      move       -> G and M touch, standing
  *                                                   on either side of START_U
  * ========================================================================== */
-const CONDITION         = "CONTROL";
-const CONDITION_LABEL = "Control Condition";
-const MAP_CENTER         = [32.888799, 39.929662];
+const CONDITION         = "INCLU";
+const CONDITION_LABEL = "Inclusion Condition";
+const MAP_CENTER         = [32.888535, 39.929045];
 const SCENE_ROTATION_DEG = 21;
 const MAP_ZOOM           = 17.4;
 const WALK_SPEED_MPS = 1.8;      // reference speed; also the blue dot's manual (d-pad/arrow-key) walking speed
