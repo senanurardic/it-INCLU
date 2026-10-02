@@ -628,11 +628,10 @@ function bootstrap() {
             map = new maplibregl.Map({
                 container: "map",
                 style: "https://tiles.openfreemap.org/styles/liberty",
-                // Centered on START_U (not MAP_CENTER) from the start, so the
-                // camera is already exactly where the blue dot is before the
-                // user ever presses a key — this is what removes the jump on
-                // the first manual move: every easeTo afterward only ever
-                // covers a tiny per-tick increment, never a big recenter.
+                // Centered on START_U and NEVER recentered afterward — the
+                // screen/camera stays completely fixed for the whole session.
+                // Only the blue dot marker itself moves (and is clamped to
+                // stay inside this fixed view; see setupMovementControls).
                 center: START_U,
                 zoom: MAP_ZOOM,
                 minZoom: MAP_ZOOM,
@@ -699,6 +698,9 @@ function bootstrap() {
 function setupMovementControls() {
     const TICK_RATE_MS = 30;
     const METERS_PER_TICK = (WALK_SPEED_MPS / 1000) * TICK_RATE_MS;
+    // How far in from the true edge of the screen the blue dot is allowed to
+    // go — keeps its icon fully visible instead of clipping at the very edge.
+    const SCREEN_EDGE_MARGIN_PX = 40;
 
     const keyDirections = {
         'ArrowUp': (0 + SCENE_ROTATION_DEG) % 360,
@@ -707,16 +709,52 @@ function setupMovementControls() {
         'ArrowLeft': (270 + SCENE_ROTATION_DEG) % 360
     };
 
+    // Half-width/half-height of the allowed walking area, in meters, measured
+    // along the SCREEN's own right/up axes (which are rotated by
+    // SCENE_ROTATION_DEG relative to geographic east/north, since the map
+    // itself is drawn rotated). Recomputed whenever the viewport size changes.
+    let viewHalfWidthM = 0;
+    let viewHalfHeightM = 0;
+    const mpp = metersPerPixel(START_U[1], MAP_ZOOM);
+
+    function updateViewportBounds() {
+        if (!map) return;
+        const el = map.getContainer();
+        viewHalfWidthM  = Math.max(0, (el.clientWidth  / 2 - SCREEN_EDGE_MARGIN_PX) * mpp);
+        viewHalfHeightM = Math.max(0, (el.clientHeight / 2 - SCREEN_EDGE_MARGIN_PX) * mpp);
+    }
+    updateViewportBounds();
+    window.addEventListener('resize', updateViewportBounds);
+
+    const rotRad = SCENE_ROTATION_DEG * Math.PI / 180;
+    const sinB = Math.sin(rotRad), cosB = Math.cos(rotRad);
+
+    // Keeps a candidate position inside the fixed, never-moving screen: the
+    // screen's center is permanently START_U (the map camera never pans), so
+    // this clamps the point's screen-right/screen-up offset from START_U to
+    // the visible half-width/half-height, sliding along the edge instead of
+    // letting the dot walk off-screen.
+    function clampToScreen(pos) {
+        const [vx, vy] = toXY(pos, START_U); // geographic east/north meters from the fixed center
+        let right = vx * cosB - vy * sinB;   // component along the screen's "right" axis
+        let up    = vx * sinB + vy * cosB;   // component along the screen's "up" axis
+        right = Math.max(-viewHalfWidthM,  Math.min(viewHalfWidthM,  right));
+        up    = Math.max(-viewHalfHeightM, Math.min(viewHalfHeightM, up));
+        const vx2 =  right * cosB + up * sinB;
+        const vy2 = -right * sinB + up * cosB;
+        return fromXY([vx2, vy2], START_U);
+    }
+
     const moveStep = (bearing) => {
-        userPos = offsetMeters(userPos, bearing, METERS_PER_TICK);
+        const candidate = offsetMeters(userPos, bearing, METERS_PER_TICK);
+        userPos = clampToScreen(candidate);
         positions["mainNode"] = userPos;
 
         if (markerInstances["mainNode"]) {
             markerInstances["mainNode"].setLngLat(userPos);
         }
-        if (map) {
-            map.easeTo({ center: userPos, duration: TICK_RATE_MS, easing: (t) => t });
-        }
+        // The screen/camera itself never moves (it stays fixed on START_U) —
+        // only the blue dot's marker position updates, clamped to stay inside it.
     };
 
     const startMove = (bearing, identifier) => {
@@ -726,9 +764,6 @@ function setupMovementControls() {
         const touchpad = document.getElementById('d-pad');
         if (touchpad) touchpad.classList.add('active');
 
-        // The camera already starts centered on START_U (see map creation
-        // above), so this first step — like every step after it — only ever
-        // nudges the view by one small tick; there is no big recenter to jump.
         moveStep(bearing);
         moveInterval = setInterval(() => moveStep(bearing), TICK_RATE_MS);
     };
