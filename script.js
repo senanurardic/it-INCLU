@@ -44,9 +44,9 @@
  * ========================================================================== */
 const CONDITION         = "INCLU";
 const CONDITION_LABEL = "Inclusion Condition";
-const MAP_CENTER         = [32.888535, 39.929045];
+const MAP_CENTER         = [32.888799, 39.929662];
 const SCENE_ROTATION_DEG = 21;
-const MAP_ZOOM           = 17.4;
+const MAP_ZOOM           = 17.0;
 const WALK_SPEED_MPS = 1.8;      // reference speed; also the blue dot's manual (d-pad/arrow-key) walking speed
 const GM_WALK_SPEED_MPS = 2.25;  // shared, constant speed for BOTH G and M (higher than the
                                   // reference speed so they start further back within the same 62s)
@@ -621,11 +621,11 @@ function bootstrap() {
             map = new maplibregl.Map({
                 container: "map",
                 style: "https://tiles.openfreemap.org/styles/liberty",
-                // Centered on START_U and NEVER recentered afterward — the
+                // Centered on MAP_CENTER and NEVER recentered afterward — the
                 // screen/camera stays completely fixed for the whole session.
                 // Only the blue dot marker itself moves (and is clamped to
                 // stay inside this fixed view; see setupMovementControls).
-                center: START_U,
+                center: MAP_CENTER,
                 zoom: MAP_ZOOM,
                 minZoom: MAP_ZOOM,
                 maxZoom: MAP_ZOOM,
@@ -708,7 +708,7 @@ function setupMovementControls() {
     // itself is drawn rotated). Recomputed whenever the viewport size changes.
     let viewHalfWidthM = 0;
     let viewHalfHeightM = 0;
-    const mpp = metersPerPixel(START_U[1], MAP_ZOOM);
+    const mpp = metersPerPixel(MAP_CENTER[1], MAP_ZOOM);
 
     function updateViewportBounds() {
         if (!map) return;
@@ -723,19 +723,19 @@ function setupMovementControls() {
     const sinB = Math.sin(rotRad), cosB = Math.cos(rotRad);
 
     // Keeps a candidate position inside the fixed, never-moving screen: the
-    // screen's center is permanently START_U (the map camera never pans), so
-    // this clamps the point's screen-right/screen-up offset from START_U to
+    // screen's center is permanently MAP_CENTER (the map camera never pans), so
+    // this clamps the point's screen-right/screen-up offset from MAP_CENTER to
     // the visible half-width/half-height, sliding along the edge instead of
     // letting the dot walk off-screen.
     function clampToScreen(pos) {
-        const [vx, vy] = toXY(pos, START_U); // geographic east/north meters from the fixed center
+        const [vx, vy] = toXY(pos, MAP_CENTER); // geographic east/north meters from the fixed center
         let right = vx * cosB - vy * sinB;   // component along the screen's "right" axis
         let up    = vx * sinB + vy * cosB;   // component along the screen's "up" axis
         right = Math.max(-viewHalfWidthM,  Math.min(viewHalfWidthM,  right));
         up    = Math.max(-viewHalfHeightM, Math.min(viewHalfHeightM, up));
         const vx2 =  right * cosB + up * sinB;
         const vy2 = -right * sinB + up * cosB;
-        return fromXY([vx2, vy2], START_U);
+        return fromXY([vx2, vy2], MAP_CENTER);
     }
 
     const moveStep = (bearing) => {
@@ -746,7 +746,7 @@ function setupMovementControls() {
         if (markerInstances["mainNode"]) {
             markerInstances["mainNode"].setLngLat(userPos);
         }
-        // The screen/camera itself never moves (it stays fixed on START_U) —
+        // The screen/camera itself never moves (it stays fixed on MAP_CENTER) —
         // only the blue dot's marker position updates, clamped to stay inside it.
     };
 
