@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Konum yerleştirme aracı (senkronize)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; }
+  #panel {
+    position: fixed; top:0; left:0; width: 340px; height: 100vh; overflow-y:auto;
+    background: #fff; border-right: 1px solid #ddd; padding: 20px; z-index: 10; font-size: 14px;
+  }
+  #map { position: fixed; top:0; left:340px; right:0; bottom:0; }
+  h2 { font-size: 17px; margin: 0 0 6px; }
+  .sub { color:#666; font-size:12px; margin-bottom: 16px; line-height:1.5; }
+  .row { margin-bottom: 14px; }
+  label { display:block; font-weight:600; margin-bottom:6px; }
+  .cond-btns { display:flex; gap:6px; }
+  .cond-btns button {
+    flex:1; padding:8px 0; border:1px solid #ccc; background:#f2f2f2; border-radius:6px; cursor:pointer; font-size:13px;
+  }
+  .cond-btns button.active { background:#1a73e8; color:#fff; border-color:#1a73e8; }
+  .legend { display:flex; gap:14px; align-items:center; font-size:12px; margin-top:4px; }
+  .dot { width:12px; height:12px; border-radius:50%; display:inline-block; margin-right:4px; vertical-align:-1px; }
+  input[type=range] { width:100%; }
+  input[type=text] { width:100%; padding:8px; border:1px solid #ccc; border-radius:6px; font-family: monospace; }
+  button.go { padding:8px 14px; border:none; background:#1a73e8; color:#fff; border-radius:6px; cursor:pointer; margin-top:8px; }
+  button.zoom { padding:8px 14px; border:1px solid #ccc; background:#f2f2f2; border-radius:6px; cursor:pointer; margin-top:8px; margin-left:6px; }
+  table { width:100%; border-collapse: collapse; margin-top:8px; }
+  td { padding:3px 0; font-size:13px; }
+  td.val { text-align:right; font-family: monospace; }
+  hr { border:none; border-top:1px solid #eee; margin: 16px 0; }
+  pre#codeOut {
+    background:#111827; color:#d1fae5; padding:10px; border-radius:6px; font-size:12px;
+    white-space:pre-wrap; word-break:break-all;
+  }
+</style>
+</head>
+<body>
+<div id="panel">
+  <h2>Konum yerleştirme aracı</h2>
+  <div class="sub">Tüm özel rotalar ve ikonlar harita ile senkronize edildi.</div>
+
+  <div class="row">
+    <label>Koşul</label>
+    <div class="cond-btns">
+      <button data-cond="IM" class="active">IM</button>
+      <button data-cond="CONTROL">Control</button>
+    </div>
+    <div class="legend">
+      <span><span class="dot" style="background:#64748b"></span>G</span>
+      <span><span class="dot" style="background:#64748b"></span>M</span>
+      <span><span class="dot" style="background:#4285F4"></span>katılımcı (P)</span>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="row">
+    <label>Eksen açısı: <span id="rotVal">41</span>°</label>
+    <input type="range" id="rotSlider" min="0" max="359" value="41">
+  </div>
+
+  <div class="row">
+    <label>Bir koordinata git (enlem, boylam)</label>
+    <input type="text" id="coordInput" value="39.929456, 32.888735">
+    <button class="go" id="goBtn">Git</button>
+    <button class="zoom" id="zoomToggle">Çalışma zoom'u (18)</button>
+  </div>
+
+  <hr>
+
+  <div class="row">
+    <label>Net Konumlar</label>
+    <table id="exactCoordinates"></table>
+  </div>
+
+  <hr>
+
+  <div class="row">
+    <label>İmleç Konumu (Mouse)</label>
+    <table id="cursorCoordinates">
+      <tr><td>Enlem, Boylam</td><td class="val" id="cursorCoordVal">-</td></tr>
+    </table>
+  </div>
+
+  <hr>
+
+  <div class="row">
+    <label>script.js için ayarla</label>
+    <pre id="codeOut"></pre>
+  </div>
+</div>
+<div id="map"></div>
+
+<script>
+const EARTH_RADIUS_M = 6378137;
+const MAP_ZOOM_DEFAULT = 18.0;
+
+let state = {
+    center: [32.888735, 39.929456],
+    rotation: 41,
+    zoom: MAP_ZOOM_DEFAULT,
+    condition: 'IM'
+};
+
+// Sabitlenen koordinatlar ve özel yollar
+const START_G = [32.888409, 39.929681];
+const TARGET_G = [32.888457, 39.930278];
+
+const START_M = [32.889090, 39.929422];
+const TARGET_M = [32.89044, 39.929779];
+
+const START_U = [32.888559, 39.929150];
+
+const ROAD_START = [32.888752, 39.929566];
+const ROAD_TARGET_1 = [32.888541, 39.930241];
+const ROAD_TARGET_2 = [32.889835, 39.929885];
+
+let map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://tiles.openfreemap.org/styles/liberty',
+    center: state.center,
+    zoom: state.zoom
+});
+map.dragRotate.disable();
+map.touchZoomRotate.disableRotation();
+
+let markers = {};
+
+function ensureMarker(id, color, label) {
+    if (markers[id]) return markers[id];
+    const el = document.createElement('div');
+    if (id === 'U') {
+        el.style.cssText = `width:21px;height:21px;border-radius:50%;background:#4285F4;border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,0.35);`;
+    } else {
+        el.style.cssText = `width:42px;height:42px;border-radius:50%;background:#64748b;border:2.5px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:19px;box-shadow:0 3px 8px rgba(0,0,0,0.3);`;
+        el.textContent = label;
+    }
+    const marker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(state.center).addTo(map);
+    markers[id] = marker;
+    return marker;
+}
+
+function render() {
+    ensureMarker('G', '#64748b', 'G').setLngLat(START_G);
+    ensureMarker('M', '#64748b', 'M').setLngLat(START_M);
+    ensureMarker('U', '#4285F4', '').setLngLat(START_U);
+
+    const coordRows = [
+        ['Blue Dot (Katılımcı U)', `${START_U[1].toFixed(6)}, ${START_U[0].toFixed(6)}`],
+        ['G İkonu', `${START_G[1].toFixed(6)}, ${START_G[0].toFixed(6)}`],
+        ['M İkonu', `${START_M[1].toFixed(6)}, ${START_M[0].toFixed(6)}`]
+    ];
+    document.getElementById('exactCoordinates').innerHTML = coordRows.map(r =>
+        `<tr><td>${r[0]}</td><td class="val">${r[1]}</td></tr>`).join('');
+
+    document.getElementById('codeOut').textContent =
+        `const MAP_CENTER = [${state.center[0].toFixed(6)}, ${state.center[1].toFixed(6)}];\n` +
+        `const SCENE_ROTATION_DEG = ${state.rotation};`;
+}
+
+map.on('load', () => {
+    // 4 adet yeni eklenen rotayı haritaya çizgi katmanı olarak ekleme
+    map.addSource('virtual-roads', {
+        'type': 'geojson',
+        'data': {
+            'type': 'FeatureCollection',
+            'features': [
+                { 'type': 'Feature', 'geometry': { 'type': 'LineString', 'coordinates': [START_G, TARGET_G] } },
+                { 'type': 'Feature', 'geometry': { 'type': 'LineString', 'coordinates': [START_M, TARGET_M] } },
+                { 'type': 'Feature', 'geometry': { 'type': 'LineString', 'coordinates': [ROAD_START, ROAD_TARGET_1] } },
+                { 'type': 'Feature', 'geometry': { 'type': 'LineString', 'coordinates': [ROAD_START, ROAD_TARGET_2] } }
+            ]
+        }
+    });
+
+    map.addLayer({
+        'id': 'virtual-roads-casing',
+        'type': 'line',
+        'source': 'virtual-roads',
+        'layout': { 'line-join': 'round', 'line-cap': 'round' },
+        'paint': { 'line-color': '#e4dfd3', 'line-width': 12 }
+    });
+
+    map.addLayer({
+        'id': 'virtual-roads-core',
+        'type': 'line',
+        'source': 'virtual-roads',
+        'layout': { 'line-join': 'round', 'line-cap': 'round' },
+        'paint': { 'line-color': '#ffffff', 'line-width': 8 }
+    });
+
+    render();
+});
+
+map.on('move', () => {
+    state.center = map.getCenter().toArray();
+    render();
+});
+
+map.on('mousemove', (e) => {
+    const lngLat = e.lngLat;
+    document.getElementById('cursorCoordVal').textContent = `${lngLat.lat.toFixed(6)}, ${lngLat.lng.toFixed(6)}`;
+});
+
+map.on('mouseout', () => {
+    document.getElementById('cursorCoordVal').textContent = '-';
+});
+
+document.querySelectorAll('.cond-btns button').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.cond-btns button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.condition = btn.dataset.cond;
+        render();
+    });
+});
+
+document.getElementById('rotSlider').addEventListener('input', (e) => {
+    state.rotation = parseInt(e.target.value, 10);
+    document.getElementById('rotVal').textContent = state.rotation;
+    render();
+});
+
+document.getElementById('goBtn').addEventListener('click', () => {
+    const val = document.getElementById('coordInput').value.trim();
+    const parts = val.split(',').map(s => parseFloat(s.trim()));
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        map.flyTo({ center: [parts[1], parts[0]], zoom: state.zoom });
+    } else {
+        alert('Format: enlem, boylam  (ör. 39.929456, 32.888735)');
+    }
+});
+
+let zoomToggled = false;
+document.getElementById('zoomToggle').addEventListener('click', () => {
+    zoomToggled = !zoomToggled;
+    state.zoom = zoomToggled ? 17 : MAP_ZOOM_DEFAULT;
+    document.getElementById('zoomToggle').textContent = "Çalışma zoom'u (" + state.zoom.toFixed(0) + ")";
+    map.setZoom(state.zoom);
+});
+</script>
+</body>
+</html>
