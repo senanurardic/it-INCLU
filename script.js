@@ -21,7 +21,7 @@
  *     deviations on the same side relative to the walking direction and
  *     keeps pauses identical to the original table.
  *
- * ── MOVEMENT TABLE (global seconds) ────────────────────────────────────────
+ * ── MOVEMENT TABLE (global seconds) ─────────────────────────────────────────
  *  t         G                         M
  *  0– 2    pause                     pause
  *  2– 8    move                      move
@@ -42,10 +42,8 @@
  * 56–62    move                      move       -> G and M touch, standing
  *                                                   on either side of START_U
  * ========================================================================== */
-
-const CONDITION       = "INCLUSION";
+const CONDITION         = "INCLU";
 const CONDITION_LABEL = "Inclusion Condition";
-
 const MAP_CENTER         = [32.888799, 39.929662];
 const SCENE_ROTATION_DEG = 21;
 const MAP_ZOOM           = 16.5;
@@ -55,8 +53,16 @@ const GM_WALK_SPEED_MPS = 2.00;  // shared, constant speed for BOTH G and M (hig
 const T_STABLE       = 2000;
 const T_FINAL_HOLD   = 3000;
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// Grey marker's actual rendered diameter (CSS: width 28.35px + border
+// 1.6875px * 2; default content-box box-sizing adds the border to the width).
+const GREY_MARKER_RENDERED_PX = 28.35 + 2 * 1.6875; // = 31.725px
+// For G and M to stand "maximally touching" without overlapping, the
+// center-to-center distance should equal the marker diameter (= sum of the
+// two radii, since both markers are the same size) plus a small visible
+// gap so both icons' edges stay clearly separated.
+const TOUCH_GAP_PX = GREY_MARKER_RENDERED_PX + 6; // ~37.7px center-to-center
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function calculateBearing(start, end) {
     const r = d => d * Math.PI / 180;
     const dLng = r(end[0] - start[0]);
@@ -68,6 +74,7 @@ function calculateBearing(start, end) {
 
 const EARTH_RADIUS_M = 6378137;
 const M_PER_DEG_LAT  = Math.PI * EARTH_RADIUS_M / 180;
+
 function offsetMeters(origin, bearingDeg, meters) {
     const b = bearingDeg * Math.PI / 180;
     const dLat = (meters * Math.cos(b) / EARTH_RADIUS_M) * 180 / Math.PI;
@@ -76,6 +83,7 @@ function offsetMeters(origin, bearingDeg, meters) {
     return [origin[0] + dLng, origin[1] + dLat];
 }
 
+// Local flat metric frame (x = east m, y = north m) around a reference point
 function toXY(p, ref) {
     const k = Math.cos(ref[1] * Math.PI / 180);
     return [(p[0] - ref[0]) * M_PER_DEG_LAT * k, (p[1] - ref[1]) * M_PER_DEG_LAT];
@@ -86,6 +94,7 @@ function fromXY(xy, ref) {
 }
 function vecBearing(v) { return (Math.atan2(v[0], v[1]) * 180 / Math.PI + 360) % 360; }
 
+// Map's screen-pixel-to-meter ratio (Web Mercator), for a given latitude and zoom.
 function metersPerPixel(lat, zoom) {
     return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
 }
@@ -113,17 +122,17 @@ const BM = calculateBearing(REF_START_M, REF_TARGET_M);
 // ── Reference schedules (original timing & shape, unchanged) ────────────────
 const REF_SCHEDULE_G = [
     { d: 2,  b: null },                    // global  0– 2  pause
-    { d: 6,  b: BG },                      // global  2– 8  straight BG
+    { d: 6,  b: BG },                      // global  2– 8  straight
     { d: 3,  b: null },                    // global  8–11  PAUSE (3s)
-    { d: 1,  b: BG },                      // global 11–12  straight BG
-    ...buildPureDrift(6, WEST),            // global 12–18  deviate WEST
-    { d: 2,  b: BG },                      // global 18–20  straight BG
-    { d: 6,  b: BG },                      // global 20–26  straight BG
+    { d: 1,  b: BG },                      // global 11–12  straight
+    ...buildPureDrift(6, EAST),            // global 12–18  deviate
+    { d: 2,  b: BG },                      // global 18–20  straight
+    { d: 6,  b: BG },                      // global 20–26  straight
     { d: 2,  b: null },                    // global 26–28  PAUSE (2s)
-    { d: 2,  b: BG },                      // global 28–30  straight BG
-    ...buildPureDrift(6, EAST),            // global 30–36  deviate EAST
-    { d: 2,  b: BG },                      // global 36–38  straight BG
-    { d: 6,  b: BG },                      // global 38–44  straight BG
+    { d: 2,  b: BG },                      // global 28–30  straight
+    ...buildPureDrift(6, WEST),            // global 30–36  deviate
+    { d: 2,  b: BG },                      // global 36–38  straight
+    { d: 6,  b: BG },                      // global 38–44  straight
     { d: 4,  b: null },                    // global 44–48  PAUSE (4s)
     { d: 2,  b: BG },                      // global 48–50  straight
     ...buildPureDrift(3, EAST),            // global 50–53  deviate
@@ -131,20 +140,20 @@ const REF_SCHEDULE_G = [
     { d: 6,  b: BG },                      // global 56–62  straight
 ];
 
-const SCHEDULE_M = [
+const REF_SCHEDULE_M = [
     { d: 2,  b: null },                    // global  0– 2  pause
-    ...buildPureDrift(6, WEST),            // global  2– 8  deviate WEST
-    { d: 3,  b: BM },                      // global  8–11  straight BM
+    ...buildPureDrift(6, EAST),            // global  2– 8  deviate
+    { d: 3,  b: BM },                      // global  8–11  straight
     { d: 1,  b: null },                    // global 11–12  PAUSE (1s)
-    { d: 6,  b: BM },                      // global 12–18  straight BM
+    { d: 6,  b: BM },                      // global 12–18  straight
     { d: 2,  b: null },                    // global 18–20  PAUSE (2s)
-    ...buildPureDrift(6, EAST),            // global 20–26  deviate EAST
-    { d: 2,  b: BM },                      // global 26–28  straight BM
+    ...buildPureDrift(6, 342),             // global 20–26  deviate (BM-90°)
+    { d: 2,  b: BM },                      // global 26–28  straight
     { d: 2,  b: null },                    // global 28–30  PAUSE (2s)
-    { d: 6,  b: BM },                      // global 30–36  straight BM
+    { d: 6,  b: BM },                      // global 30–36  straight
     { d: 2,  b: null },                    // global 36–38  PAUSE (2s)
-    ...buildPureDrift(6, WEST),            // global 38–44  deviate WEST
-    { d: 4,  b: BM },                      // global 44–48  straight BM
+    ...buildPureDrift(6, EAST),            // global 38–44  deviate
+    { d: 4,  b: BM },                      // global 44–48  straight
     { d: 2,  b: null },                    // global 48–50  PAUSE (2s)
     ...buildPureDrift(3, WEST),            // global 50–53  deviate
     ...buildPureDrift(3, EAST),            // global 53–56  deviate
@@ -221,7 +230,6 @@ const SCHEDULE_M = APPROACH_M.segments;
 
 // ── Runtime ──────────────────────────────────────────────────────────────────
 function scheduleTotalSeconds(s) { return s.reduce((a, seg) => a + seg.d, 0); }
-
 const ACTIVE_MS_G = scheduleTotalSeconds(SCHEDULE_G) * 1000;
 const ACTIVE_MS_M = scheduleTotalSeconds(SCHEDULE_M) * 1000;
 const TOTAL_ANIMATION_DURATION = T_STABLE + Math.max(ACTIVE_MS_G, ACTIVE_MS_M) + T_FINAL_HOLD;
@@ -237,13 +245,18 @@ const people = [
     { id: "mainNode",  markerType: "blue-pulse-dot"  }
 ];
 
-function buildWaypoints(startPos, segments) {
-    let pos = startPos, t = 0;
-    const keys = [{ t: 0, pos }];
+// Waypoints built in a flat metric frame centered on the target, so the last
+// waypoint lands exactly on the target.
+function buildWaypoints(startPos, segments, speed, ref) {
+    let xy = toXY(startPos, ref), t = 0;
+    const keys = [{ t: 0, pos: startPos }];
     for (const seg of segments) {
         t += seg.d * 1000;
-        if (seg.b !== null) pos = offsetMeters(pos, seg.b, WALK_SPEED_MPS * seg.d);
-        keys.push({ t, pos });
+        if (seg.b !== null) {
+            const r = seg.b * Math.PI / 180, m = speed * seg.d;
+            xy = [xy[0] + m * Math.sin(r), xy[1] + m * Math.cos(r)];
+        }
+        keys.push({ t, pos: fromXY(xy, ref) });
     }
     return keys;
 }
@@ -263,8 +276,8 @@ function positionAt(keys, tMs) {
     return keys[keys.length - 1].pos;
 }
 
-const WAYPOINTS_G = buildWaypoints(START_G, SCHEDULE_G);
-const WAYPOINTS_M = buildWaypoints(START_M, SCHEDULE_M);
+const WAYPOINTS_G = buildWaypoints(START_G, SCHEDULE_G, GM_WALK_SPEED_MPS, TARGET_G);
+const WAYPOINTS_M = buildWaypoints(START_M, SCHEDULE_M, GM_WALK_SPEED_MPS, TARGET_M);
 
 function agentPosition(who, elapsedMs) {
     const keys    = (who === "G") ? WAYPOINTS_G : WAYPOINTS_M;
@@ -330,6 +343,7 @@ function buildPayload(reason) {
         status: "complete", reason, elapsedMs: TOTAL_ANIMATION_DURATION, timestamp: Date.now()
     };
 }
+
 function sendCompletionSignal(reason) {
     if (hasSentCompletion) return; hasSentCompletion = true;
     try { if (window.parent) window.parent.postMessage(buildPayload(reason), "*"); }
@@ -593,7 +607,7 @@ function bootstrap() {
                 if (isG) { if (t==="fill") { paint(id,"fill-color",PAL.green); paint(id,"fill-opacity",1); } if (t==="line") paint(id,"line-color",PAL.greenDeep); return; }
                 if (sl==="landcover") { if (t==="fill") { paint(id,"fill-color",PAL.greenSoft); paint(id,"fill-opacity",.9); } return; }
                 if (sl==="landuse")   { if (t==="fill") paint(id,"fill-color",PAL.land); return; }
-                if (sl==="building")  { if (t==="fill") { paint(id,"fill-color",PAL.building); paint(id,"fill-opacity",.85); } return; }
+                if (sl==="building")  { if (t === "fill") { paint(id,"fill-color",PAL.building); paint(id,"fill-opacity",.85); } return; }
                 if (sl==="transportation") { if (t==="line") paint(id,"line-color",/casing|outline|bridge|tunnel/.test(id)?PAL.roadCase:PAL.road); return; }
                 if (t==="symbol") { paint(id,"text-color",PAL.text); paint(id,"text-halo-color",PAL.textHalo); paint(id,"text-halo-width",1.4); }
             });
@@ -607,6 +621,10 @@ function bootstrap() {
             map = new maplibregl.Map({
                 container: "map",
                 style: "https://tiles.openfreemap.org/styles/liberty",
+                // Centered on MAP_CENTER and NEVER recentered afterward — the
+                // screen/camera stays completely fixed for the whole session.
+                // Only the blue dot marker itself moves (and is clamped to
+                // stay inside this fixed view; see setupMovementControls).
                 center: MAP_CENTER,
                 zoom: MAP_ZOOM,
                 minZoom: MAP_ZOOM,
@@ -673,6 +691,8 @@ function bootstrap() {
 function setupMovementControls() {
     const TICK_RATE_MS = 30;
     const METERS_PER_TICK = (WALK_SPEED_MPS / 1000) * TICK_RATE_MS;
+    // How far in from the true edge of the screen the blue dot is allowed to
+    // go — keeps its icon fully visible instead of clipping at the very edge.
     const SCREEN_EDGE_MARGIN_PX = 40;
 
     const keyDirections = {
@@ -682,6 +702,10 @@ function setupMovementControls() {
         'ArrowLeft': (270 + SCENE_ROTATION_DEG) % 360
     };
 
+    // Half-width/half-height of the allowed walking area, in meters, measured
+    // along the SCREEN's own right/up axes (which are rotated by
+    // SCENE_ROTATION_DEG relative to geographic east/north, since the map
+    // itself is drawn rotated). Recomputed whenever the viewport size changes.
     let viewHalfWidthM = 0;
     let viewHalfHeightM = 0;
     const mpp = metersPerPixel(MAP_CENTER[1], MAP_ZOOM);
@@ -698,10 +722,15 @@ function setupMovementControls() {
     const rotRad = SCENE_ROTATION_DEG * Math.PI / 180;
     const sinB = Math.sin(rotRad), cosB = Math.cos(rotRad);
 
+    // Keeps a candidate position inside the fixed, never-moving screen: the
+    // screen's center is permanently MAP_CENTER (the map camera never pans), so
+    // this clamps the point's screen-right/screen-up offset from MAP_CENTER to
+    // the visible half-width/half-height, sliding along the edge instead of
+    // letting the dot walk off-screen.
     function clampToScreen(pos) {
-        const [vx, vy] = toXY(pos, MAP_CENTER);
-        let right = vx * cosB - vy * sinB;
-        let up    = vx * sinB + vy * cosB;
+        const [vx, vy] = toXY(pos, MAP_CENTER); // geographic east/north meters from the fixed center
+        let right = vx * cosB - vy * sinB;   // component along the screen's "right" axis
+        let up    = vx * sinB + vy * cosB;   // component along the screen's "up" axis
         right = Math.max(-viewHalfWidthM,  Math.min(viewHalfWidthM,  right));
         up    = Math.max(-viewHalfHeightM, Math.min(viewHalfHeightM, up));
         const vx2 =  right * cosB + up * sinB;
@@ -713,16 +742,21 @@ function setupMovementControls() {
         const candidate = offsetMeters(userPos, bearing, METERS_PER_TICK);
         userPos = clampToScreen(candidate);
         positions["mainNode"] = userPos;
+
         if (markerInstances["mainNode"]) {
             markerInstances["mainNode"].setLngLat(userPos);
         }
+        // The screen/camera itself never moves (it stays fixed on MAP_CENTER) —
+        // only the blue dot's marker position updates, clamped to stay inside it.
     };
 
     const startMove = (bearing, identifier) => {
         if (moveInterval) clearInterval(moveInterval);
         currentDirectionBtn = identifier;
+
         const touchpad = document.getElementById('d-pad');
         if (touchpad) touchpad.classList.add('active');
+
         moveStep(bearing);
         moveInterval = setInterval(() => moveStep(bearing), TICK_RATE_MS);
     };
@@ -745,11 +779,13 @@ function setupMovementControls() {
         const rect = touchpad.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
+
         const dx = clientX - centerX;
         const dy = clientY - centerY; 
 
         let angleDeg = Math.atan2(dx, -dy) * (180 / Math.PI);
         if (angleDeg < 0) angleDeg += 360;
+
         const bearing = (angleDeg + SCENE_ROTATION_DEG) % 360;
         startMove(bearing, identifier);
     };
@@ -760,11 +796,13 @@ function setupMovementControls() {
             e.preventDefault();
             handleTouchpadInteraction(e.clientX, e.clientY, 'mouse');
         });
+
         touchpad.addEventListener('touchstart', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
             handleTouchpadInteraction(touch.clientX, touch.clientY, 'touch');
         }, { passive: false });
+
         window.addEventListener('mouseup', () => stopMove('mouse'));
         touchpad.addEventListener('mouseleave', () => stopMove('mouse'));
         window.addEventListener('touchend', (e) => {
@@ -789,8 +827,11 @@ if (typeof window !== "undefined" && typeof document !== "undefined") bootstrap(
 if (typeof module !== "undefined" && module.exports) {
     module.exports = {
         CONDITION, CONDITION_LABEL, SCHEDULE_G, SCHEDULE_M,
+        REF_SCHEDULE_G, REF_SCHEDULE_M,
+        APPROACH_G, APPROACH_M, OLD_ROUTE_END_G, OLD_ROUTE_END_M,
         START_G, START_M, START_U, TARGET_G, TARGET_M,
-        MAP_CENTER, MAP_ZOOM, WALK_SPEED_MPS, SCENE_ROTATION_DEG,
+        MAP_CENTER, MAP_ZOOM, WALK_SPEED_MPS, GM_WALK_SPEED_MPS, SCENE_ROTATION_DEG,
+        TOUCH_GAP_M, TOUCH_GAP_PX, MPP,
         T_STABLE, T_FINAL_HOLD, TOTAL_ANIMATION_DURATION,
         agentPosition, offsetMeters, buildPureDrift, calculateBearing,
         metersPerPixel, toXY, fromXY,
