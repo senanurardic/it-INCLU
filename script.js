@@ -1,51 +1,46 @@
 /* ============================================================================
  * LOCATION-SHARING SOCIAL DISCONNECTION PARADIGM
- * Condition: INCLUSION — G and M converge (total ~101s)
+ * Condition: INCLU (G and M approach the user's start point, 62s total)
  *
- * Mirror of the EXCLUSION v2 condition: START and TARGET coordinates are
- * swapped so G and M begin far apart and move toward U / each other.
- * Pause timing and durations are identical to EXCLUSION v2.
- * Deviation directions are chosen so G and M never deviate in the same
- * direction at the same time.
+ *
+ * How it works:
+ *  1. REF_SCHEDULE_* is the original 62-second movement template (timing +
+ *     shape), unchanged.
+ *  2. TARGET_G / TARGET_M are the two points just left and right of
+ *     START_U (on screen, accounting for the map's rotation) where the two
+ *     grey markers exactly touch without overlapping each other.
+ *  3. GM_WALK_SPEED_MPS is picked higher than the template's original
+ *     reference speed, so the SAME 62-second schedule covers more ground —
+ *     this is what pushes the start position further back, without adding
+ *     any extra time and without the two actors' speeds ever differing from
+ *     each other.
+ *  4. The template is rotated to preserve the original route's general
+ *     direction (REF_START -> TARGET), then START_G / START_M are solved
+ *     BACKWARDS so that walking the rotated template from there, at
+ *     GM_WALK_SPEED_MPS, lands exactly on TARGET at t=62s. This keeps
+ *     deviations on the same side relative to the walking direction and
+ *     keeps pauses identical to the original table.
  *
  * ── MOVEMENT TABLE (global seconds) ────────────────────────────────────────
  *  t         G                         M
  *  0– 2    pause                     pause
- *  2– 8    straight BG               deviate WEST
- *  8–11    PAUSE (3s)                straight BM
- * 11–12    straight BG               PAUSE (1s)
- * 12–18    deviate WEST              straight BM
- * 18–20    straight BG               PAUSE (2s)
- * 20–26    straight BG               deviate EAST
- * 26–28    PAUSE (2s)                straight BM
- * 28–30    straight BG               PAUSE (2s)
- * 30–36    deviate EAST              straight BM
- * 36–38    straight BG               PAUSE (2s)
- * 38–44    straight BG               deviate WEST
- * 44–48    PAUSE (4s)                straight BM
- * 48–50    straight BG               PAUSE (2s)
- * 50–53    deviate WEST              deviate EAST
- * 53–56    deviate EAST              deviate WEST
- * 56–62    straight BG               straight BM
- * ── added block ──
- * 62–64    straight BG               PAUSE (2s)
- * 64–66    straight BG               straight BM
- * 66–68    PAUSE (2s)                straight BM
- * 68–71    deviate WEST              straight BM
- * 71–74    deviate EAST              straight BM
- * 74–80    straight BG               deviate EAST
- * 80–82    PAUSE (2s)                straight BM
- * 82–84    straight BG               PAUSE (2s)
- * 84–86    straight BG               straight BM
- * 86–88    straight BG               straight BM
- * 88–90    straight BG               deviate EAST
- * 89–91    PAUSE (2s)                deviate EAST
- * 90–91    PAUSE                     deviate WEST
- * 91–93    deviate WEST              deviate WEST
- * 92–94    deviate WEST              PAUSE (2s)
- * 93–95    deviate EAST              PAUSE
- * 94–95    deviate EAST              straight BM
- * 95–96    straight BG               straight BM
+ *  2– 8    move                      move
+ *  8–11    PAUSE (3s)                move
+ * 11–12    move                      PAUSE (1s)
+ * 12–18    move                      move
+ * 18–20    move                      PAUSE (2s)
+ * 20–26    move                      move
+ * 26–28    PAUSE (2s)                move
+ * 28–30    move                      PAUSE (2s)
+ * 30–36    move                      move
+ * 36–38    move                      PAUSE (2s)
+ * 38–44    move                      move
+ * 44–48    PAUSE (4s)                move
+ * 48–50    move                      PAUSE (2s)
+ * 50–53    move                      move
+ * 53–56    move                      move
+ * 56–62    move                      move       -> G and M touch, standing
+ *                                                   on either side of START_U
  * ========================================================================== */
 
 const CONDITION       = "INCLUSION";
@@ -53,9 +48,10 @@ const CONDITION_LABEL = "Inclusion Condition";
 
 const MAP_CENTER         = [32.888799, 39.929662];
 const SCENE_ROTATION_DEG = 21;
-const MAP_ZOOM           = 15.6;
-
-const WALK_SPEED_MPS = 4.50;
+const MAP_ZOOM           = 16.5;
+const WALK_SPEED_MPS = 2.00;      // reference speed; also the blue dot's manual (d-pad/arrow-key) walking speed
+const GM_WALK_SPEED_MPS = 2.00;  // shared, constant speed for BOTH G and M (higher than the
+                                  // reference speed so they start further back within the same 62s)
 const T_STABLE       = 2000;
 const T_FINAL_HOLD   = 3000;
 
@@ -80,7 +76,6 @@ function offsetMeters(origin, bearingDeg, meters) {
     return [origin[0] + dLng, origin[1] + dLat];
 }
 
-// Local flat metric frame (x = east m, y = north m) around a reference point
 function toXY(p, ref) {
     const k = Math.cos(ref[1] * Math.PI / 180);
     return [(p[0] - ref[0]) * M_PER_DEG_LAT * k, (p[1] - ref[1]) * M_PER_DEG_LAT];
@@ -91,7 +86,6 @@ function fromXY(xy, ref) {
 }
 function vecBearing(v) { return (Math.atan2(v[0], v[1]) * 180 / Math.PI + 360) % 360; }
 
-// Map's screen-pixel-to-meter ratio (Web Mercator), for a given latitude and zoom.
 function metersPerPixel(lat, zoom) {
     return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
 }
@@ -103,25 +97,21 @@ function buildPureDrift(totalDur, driftBearing) {
 const EAST = 90;
 const WEST = 270;
 
-// ── Locations ─────────────────────────────────────────────────────────────────
-// START and TARGET are the new coordinates provided:
-// G starts far north, M starts far east — both converge toward target cluster.
+// ── Locations ────────────────────────────────────────────────────────────────
+// Original starting points: only used to reconstruct the old routes' end points
+const REF_START_G  = [32.888409, 39.929681];
+const REF_START_M  = [32.889090, 39.929422];
+const REF_TARGET_G = [32.888455, 39.930278];
+const REF_TARGET_M = [32.890168, 39.929707];
+const START_U = [32.888559, 39.929150];
+const ROAD_START    = [32.888752, 39.929566];
+const ROAD_TARGET_1 = [32.888541, 39.930241];
+const ROAD_TARGET_2 = [32.889835, 39.929885];
+const BG = calculateBearing(REF_START_G, REF_TARGET_G);
+const BM = calculateBearing(REF_START_M, REF_TARGET_M);
 
-const START_G = [32.888770, 39.931641];
-const START_M = [32.891418, 39.930256];
-const START_U = [32.888449, 39.928812];
-
-const TARGET_G = [32.888405, 39.929364];
-const TARGET_M = [32.888815, 39.929190];
-
-const BG = calculateBearing(START_G, TARGET_G);
-const BM = calculateBearing(START_M, TARGET_M);
-
-// ── Schedules ─────────────────────────────────────────────────────────────────
-// Pause positions and durations are identical to EXCLUSION v2.
-// Deviation directions are chosen so G and M never go the same way simultaneously.
-
-const SCHEDULE_G = [
+// ── Reference schedules (original timing & shape, unchanged) ────────────────
+const REF_SCHEDULE_G = [
     { d: 2,  b: null },                    // global  0– 2  pause
     { d: 6,  b: BG },                      // global  2– 8  straight BG
     { d: 3,  b: null },                    // global  8–11  PAUSE (3s)
@@ -135,23 +125,10 @@ const SCHEDULE_G = [
     { d: 2,  b: BG },                      // global 36–38  straight BG
     { d: 6,  b: BG },                      // global 38–44  straight BG
     { d: 4,  b: null },                    // global 44–48  PAUSE (4s)
-    { d: 2,  b: BG },                      // global 48–50  straight BG
-    ...buildPureDrift(3, WEST),            // global 50–53  deviate WEST
-    ...buildPureDrift(3, EAST),            // global 53–56  deviate EAST
-    { d: 6,  b: BG },                      // global 56–62  straight BG
-    // ── added block ──
-    { d: 4,  b: BG },                      // global 62–66  straight BG
-    { d: 2,  b: null },                    // global 66–68  PAUSE (2s)
-    ...buildPureDrift(3, WEST),            // global 68–71  deviate WEST
-    ...buildPureDrift(3, EAST),            // global 71–74  deviate EAST
-    { d: 6,  b: BG },                      // global 74–80  straight BG
-    { d: 2,  b: null },                    // global 80–82  PAUSE (2s)
-    { d: 4,  b: BG },                      // global 82–86  straight BG
-    { d: 3,  b: BG },                      // global 86–89  straight BG
-    { d: 2,  b: null },                    // global 89–91  PAUSE (2s)
-    ...buildPureDrift(2, WEST),            // global 91–93  deviate WEST
-    ...buildPureDrift(2, EAST),            // global 93–95  deviate EAST
-    { d: 1,  b: BG },                      // global 95–96  straight BG
+    { d: 2,  b: BG },                      // global 48–50  straight
+    ...buildPureDrift(3, EAST),            // global 50–53  deviate
+    ...buildPureDrift(3, WEST),            // global 53–56  deviate
+    { d: 6,  b: BG },                      // global 56–62  straight
 ];
 
 const SCHEDULE_M = [
@@ -169,26 +146,80 @@ const SCHEDULE_M = [
     ...buildPureDrift(6, WEST),            // global 38–44  deviate WEST
     { d: 4,  b: BM },                      // global 44–48  straight BM
     { d: 2,  b: null },                    // global 48–50  PAUSE (2s)
-    ...buildPureDrift(3, EAST),            // global 50–53  deviate EAST
-    ...buildPureDrift(3, WEST),            // global 53–56  deviate WEST
-    { d: 6,  b: BM },                      // global 56–62  straight BM
-    // ── added block ──
-    { d: 2,  b: null },                    // global 62–64  PAUSE (2s)
-    { d: 6,  b: BM },                      // global 64–70  straight BM
-    ...buildPureDrift(3, EAST),            // global 70–73  deviate EAST
-    ...buildPureDrift(3, WEST),            // global 73–76  deviate WEST
-    { d: 6,  b: BM },                      // global 76–82  straight BM
-    { d: 2,  b: null },                    // global 82–84  PAUSE (2s)
-    { d: 2,  b: BM },                      // global 84–86  straight BM
-    { d: 2,  b: BM },                      // global 86–88  straight BM
-    ...buildPureDrift(2, EAST),            // global 88–90  deviate EAST
-    ...buildPureDrift(2, WEST),            // global 90–92  deviate WEST
-    { d: 2,  b: null },                    // global 92–94  PAUSE (2s)
-    { d: 2,  b: BM },                      // global 94–96  straight BM
+    ...buildPureDrift(3, WEST),            // global 50–53  deviate
+    ...buildPureDrift(3, EAST),            // global 53–56  deviate
+    { d: 6,  b: BM },                      // global 56–62  straight
 ];
 
-// ── Runtime ───────────────────────────────────────────────────────────────────
+// ── Old route end points: only used as a directional reference (not a
+// fixed start anymore) to pick which way G and M appear to be approaching from.
+function refEndPoint(startPos, segments) {
+    let pos = startPos;
+    for (const seg of segments)
+        if (seg.b !== null) pos = offsetMeters(pos, seg.b, WALK_SPEED_MPS * seg.d);
+    return pos;
+}
+const OLD_ROUTE_END_G = refEndPoint(REF_START_G, REF_SCHEDULE_G);
+const OLD_ROUTE_END_M = refEndPoint(REF_START_M, REF_SCHEDULE_M);
 
+// ── Final targets: the two points on either side of START_U where the grey
+// markers exactly touch (TOUCH_GAP_PX) without overlapping, side by side on screen ──
+const MPP = metersPerPixel(START_U[1], MAP_ZOOM);
+const TOUCH_GAP_M = TOUCH_GAP_PX * MPP;
+const HALF_GAP_M  = TOUCH_GAP_M / 2;
+// The map is rotated by SCENE_ROTATION_DEG, so geographic bearing
+// (SCENE_ROTATION_DEG + 90°) points to "screen right", and +270° to "screen left".
+const SCREEN_RIGHT_BEARING = (SCENE_ROTATION_DEG + 90) % 360;
+const SCREEN_LEFT_BEARING  = (SCENE_ROTATION_DEG + 270) % 360;
+const TARGET_G = offsetMeters(START_U, SCREEN_LEFT_BEARING,  HALF_GAP_M); // leftNode
+const TARGET_M = offsetMeters(START_U, SCREEN_RIGHT_BEARING, HALF_GAP_M); // rightNode
+
+// ── Approach schedules: the template is rotated (direction kept the same as
+// the old route); speed is GM_WALK_SPEED_MPS for both (identical, never
+// scaled per-agent); the start position is solved BACKWARDS so the rotated
+// template, walked at that speed, lands exactly on TARGET at t=62s.
+function buildApproachSchedule(refSchedule, oldRouteEnd, targetPos) {
+    // net displacement of the template at the shared G/M walking speed (meters)
+    let L = [0, 0];
+    for (const s of refSchedule) {
+        if (s.b === null) continue;
+        const r = s.b * Math.PI / 180, m = GM_WALK_SPEED_MPS * s.d;
+        L = [L[0] + m * Math.sin(r), L[1] + m * Math.cos(r)];
+    }
+    // Direction: from the old route's end toward the target (only the angle
+    // matters here, not the magnitude) — this is what preserves the "coming
+    // from roughly the same place" feel.
+    const oldEndXY = toXY(oldRouteEnd, targetPos);
+    const D = [-oldEndXY[0], -oldEndXY[1]];            // oldRouteEnd -> target direction
+    const rot = (vecBearing(D) - vecBearing(L) + 360) % 360;
+
+    // Rotate the template's net-displacement vector by rot (magnitude unchanged, never scaled).
+    const Lmag = Math.hypot(L[0], L[1]);
+    const Lbearing = vecBearing(L);
+    const fRad = (Lbearing + rot) * Math.PI / 180;
+    const F = [Lmag * Math.sin(fRad), Lmag * Math.cos(fRad)];
+
+    // START = TARGET - F  (metric frame centered on TARGET, so TARGET_xy = [0,0])
+    const startPos = fromXY([-F[0], -F[1]], targetPos);
+
+    return {
+        startPos,
+        rotationDeg: rot,
+        speed: GM_WALK_SPEED_MPS,
+        segments: refSchedule.map(s => s.b === null
+            ? { d: s.d, b: null }
+            : { d: s.d, b: (s.b + rot + 360) % 360 })
+    };
+}
+
+const APPROACH_G = buildApproachSchedule(REF_SCHEDULE_G, OLD_ROUTE_END_G, TARGET_G);
+const APPROACH_M = buildApproachSchedule(REF_SCHEDULE_M, OLD_ROUTE_END_M, TARGET_M);
+const START_G = APPROACH_G.startPos;
+const START_M = APPROACH_M.startPos;
+const SCHEDULE_G = APPROACH_G.segments;
+const SCHEDULE_M = APPROACH_M.segments;
+
+// ── Runtime ──────────────────────────────────────────────────────────────────
 function scheduleTotalSeconds(s) { return s.reduce((a, seg) => a + seg.d, 0); }
 
 const ACTIVE_MS_G = scheduleTotalSeconds(SCHEDULE_G) * 1000;
@@ -367,7 +398,8 @@ function injectUIDesignStyles() {
             border-radius:50%; font-size:20px; cursor:pointer; display:flex; align-items:center;
             justify-content:center; transition:background .2s,transform .1s }
         #submit-btn:active { transform:scale(.96); background:#2c5282 }
-
+        
+        /* ── D-pad / movement control design (ported from the interactive build) ── */
         #d-pad {
             position: absolute;
             bottom: 24px;
@@ -591,6 +623,45 @@ function bootstrap() {
             map.on("load", () => {
                 mapHasLoaded = true; clearTimeout(mapLoadTimeoutId);
                 declutterBasemap(); applyFindMyPalette();
+
+                map.addSource("virtual-roads", { type: "geojson", data: { type: "FeatureCollection", features: [
+                    { type: "Feature", geometry: { type: "LineString", coordinates: [
+                        [32.888409, 39.929681],
+                        [32.887900, 39.931650],
+                        [32.887550, 39.933000]
+                    ] } },
+                    { type: "Feature", geometry: { type: "LineString", coordinates: [
+                        [32.889090, 39.929422],
+                        [32.890168, 39.929707],
+                        [32.891200, 39.930400],
+                        [32.892400, 39.931400]
+                    ] } },
+                    { type: "Feature", geometry: { type: "LineString", coordinates: [ROAD_START, ROAD_TARGET_1] } },
+                    { type: "Feature", geometry: { type: "LineString", coordinates: [ROAD_START, ROAD_TARGET_2] } },
+                    { type: "Feature", geometry: { type: "LineString", coordinates: [[32.888292,39.930351],[32.887327,39.930721]] } }
+                ]}});
+
+                let firstRoadLayerId = null;
+                for (const l of map.getStyle().layers) {
+                    const sl = (l["source-layer"] || "").toLowerCase();
+                    if (sl === "transportation") {
+                        firstRoadLayerId = l.id;
+                        break;
+                    }
+                }
+
+                map.addLayer({
+                    id: "virtual-roads-casing", type: "line", source: "virtual-roads",
+                    layout: { "line-join": "round", "line-cap": "round" },
+                    paint: { "line-color": "#e4dfd3", "line-width": 12 }
+                }, firstRoadLayerId);
+
+                map.addLayer({
+                    id: "virtual-roads-core", type: "line", source: "virtual-roads",
+                    layout: { "line-join": "round", "line-cap": "round" },
+                    paint: { "line-color": "#ffffff", "line-width": 8 }
+                }, firstRoadLayerId);
+
                 map.getCanvas().style.filter = "none";
             });
 
@@ -642,7 +713,6 @@ function setupMovementControls() {
         const candidate = offsetMeters(userPos, bearing, METERS_PER_TICK);
         userPos = clampToScreen(candidate);
         positions["mainNode"] = userPos;
-
         if (markerInstances["mainNode"]) {
             markerInstances["mainNode"].setLngLat(userPos);
         }
@@ -651,17 +721,15 @@ function setupMovementControls() {
     const startMove = (bearing, identifier) => {
         if (moveInterval) clearInterval(moveInterval);
         currentDirectionBtn = identifier;
-
         const touchpad = document.getElementById('d-pad');
         if (touchpad) touchpad.classList.add('active');
-
         moveStep(bearing);
         moveInterval = setInterval(() => moveStep(bearing), TICK_RATE_MS);
     };
 
     const stopMove = (identifier) => {
         if (currentDirectionBtn !== identifier && identifier !== 'ALL') return;
-
+        
         if (moveInterval) {
             clearInterval(moveInterval);
             moveInterval = null;
@@ -677,13 +745,11 @@ function setupMovementControls() {
         const rect = touchpad.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
-
         const dx = clientX - centerX;
-        const dy = clientY - centerY;
+        const dy = clientY - centerY; 
 
         let angleDeg = Math.atan2(dx, -dy) * (180 / Math.PI);
         if (angleDeg < 0) angleDeg += 360;
-
         const bearing = (angleDeg + SCENE_ROTATION_DEG) % 360;
         startMove(bearing, identifier);
     };
@@ -694,13 +760,11 @@ function setupMovementControls() {
             e.preventDefault();
             handleTouchpadInteraction(e.clientX, e.clientY, 'mouse');
         });
-
         touchpad.addEventListener('touchstart', (e) => {
             e.preventDefault();
             const touch = e.touches[0];
             handleTouchpadInteraction(touch.clientX, touch.clientY, 'touch');
         }, { passive: false });
-
         window.addEventListener('mouseup', () => stopMove('mouse'));
         touchpad.addEventListener('mouseleave', () => stopMove('mouse'));
         window.addEventListener('touchend', (e) => {
