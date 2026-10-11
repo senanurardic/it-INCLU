@@ -39,7 +39,8 @@
  * 48–50    move                      PAUSE (2s)
  * 50–53    move                      move
  * 53–56    move                      move
- * 56–62    move                      move       -> G and M touch, standing
+ * 56–60    move                      move
+ * 60–62    PAUSE (2s)                PAUSE (2s)  -> G and M touch, standing
  *                                                   on either side of START_U
  * ========================================================================== */
 const CONDITION         = "INCLU";
@@ -109,7 +110,7 @@ const WEST = 270;
 // ── Locations ────────────────────────────────────────────────────────────────
 // Original starting points: only used to reconstruct the old routes' end points
 const REF_START_G  = [32.888409, 39.929681];
-const REF_START_M  = [32.889090, 39.929422];
+const REF_START_M  = [32.888900, 39.929422];
 const REF_TARGET_G = [32.888455, 39.930278];
 const REF_TARGET_M = [32.890168, 39.929707];
 const START_U = [32.888559, 39.929150];
@@ -137,7 +138,8 @@ const REF_SCHEDULE_G = [
     { d: 2,  b: BG },                      // global 48–50  straight
     ...buildPureDrift(3, EAST),            // global 50–53  deviate
     ...buildPureDrift(3, WEST),            // global 53–56  deviate
-    { d: 6,  b: BG },                      // global 56–62  straight
+    { d: 4,  b: BG },                      // global 56–60  straight
+    { d: 2,  b: null },                    // global 60–62  PAUSE (2s)
 ];
 
 const REF_SCHEDULE_M = [
@@ -157,7 +159,8 @@ const REF_SCHEDULE_M = [
     { d: 2,  b: null },                    // global 48–50  PAUSE (2s)
     ...buildPureDrift(3, WEST),            // global 50–53  deviate
     ...buildPureDrift(3, EAST),            // global 53–56  deviate
-    { d: 6,  b: BM },                      // global 56–62  straight
+    { d: 4,  b: BM },                      // global 56–60  straight
+    { d: 2,  b: null },                    // global 60–62  PAUSE (2s)
 ];
 
 // ── Old route end points: only used as a directional reference (not a
@@ -649,7 +652,7 @@ function bootstrap() {
                         [32.887550, 39.933000]
                     ] } },
                     { type: "Feature", geometry: { type: "LineString", coordinates: [
-                        [32.889090, 39.929422],
+                        [32.888900, 39.929422],
                         [32.890168, 39.929707],
                         [32.891200, 39.930400],
                         [32.892400, 39.931400]
