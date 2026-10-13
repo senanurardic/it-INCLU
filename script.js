@@ -1,75 +1,64 @@
 /* ============================================================================
- * LOCATION-SHARING SOCIAL DISCONNECTION PARADIGM
- * Condition: INCLU (G and M approach the user's start point, 62s total)
+- LOCATION-SHARING SOCIAL DISCONNECTION PARADIGM
+- Condition: INCLU (G and M approach the user's start point, 62s total)
  *
  *
- * How it works:
- *  1. REF_SCHEDULE_* is the original 62-second movement template (timing +
- *     shape), unchanged.
- *  2. TARGET_G / TARGET_M are the two points just left and right of
- *     START_U (on screen, accounting for the map's rotation) where the two
- *     grey markers exactly touch without overlapping each other.
- *  3. GM_WALK_SPEED_MPS is picked higher than the template's original
- *     reference speed, so the SAME 62-second schedule covers more ground —
- *     this is what pushes the start position further back, without adding
- *     any extra time and without the two actors' speeds ever differing from
- *     each other.
- *  4. The template is rotated to preserve the original route's general
- *     direction (REF_START -> TARGET), then START_G / START_M are solved
- *     BACKWARDS so that walking the rotated template from there, at
- *     GM_WALK_SPEED_MPS, lands exactly on TARGET at t=62s. This keeps
- *     deviations on the same side relative to the walking direction and
- *     keeps pauses identical to the original table.
+- How it works:
+-  1. REF_SCHEDULE_* is the original 62-second movement template (timing +
+-     shape), unchanged.
+-  2. TARGET_G / TARGET_M are hardcoded to the specified final positions
+-     at t=62s while preserving all pause schedules and deviations.
+-  3. GM_WALK_SPEED_MPS is picked higher than the template's original
+-     reference speed, so the SAME 62-second schedule covers more ground —
+-     this is what pushes the start position further back, without adding
+-     any extra time and without the two actors' speeds ever differing from
+-     each other.
+-  4. The template is rotated to preserve the original route's general
+-     direction (REF_START -> TARGET), then START_G / START_M are solved
+-     BACKWARDS so that walking the rotated template from there, at
+-     GM_WALK_SPEED_MPS, lands exactly on TARGET at t=62s.
  *
- * ── MOVEMENT TABLE (global seconds) ─────────────────────────────────────────
- *  t         G                         M
- *  0– 2    pause                     pause
- *  2– 8    move                      move
- *  8–11    PAUSE (3s)                move
- * 11–12    move                      PAUSE (1s)
- * 12–18    move                      move
- * 18–20    move                      PAUSE (2s)
- * 20–26    move                      move
- * 26–28    PAUSE (2s)                move
- * 28–30    move                      PAUSE (2s)
- * 30–36    move                      move
- * 36–38    move                      PAUSE (2s)
- * 38–44    move                      move
- * 44–48    PAUSE (4s)                move
- * 48–50    move                      PAUSE (2s)
- * 50–53    move                      move
- * 53–56    move                      move
- * 56–60    move                      move
- * 60–62    PAUSE (2s)                PAUSE (2s)  -> G and M touch, standing
- *                                                   on either side of START_U
- * ========================================================================== */
+- ── MOVEMENT TABLE (global seconds) ─────────────────────────────────────────
+-  t         G                         M
+-  0– 2    pause                     pause
+-  2– 8    move                      move
+-  8–11    PAUSE (3s)                move
+- 11–12    move                      PAUSE (1s)
+- 12–18    move                      move
+- 18–20    move                      PAUSE (2s)
+- 20–26    move                      move
+- 26–28    PAUSE (2s)                move
+- 28–30    move                      PAUSE (2s)
+- 30–36    move                      move
+- 36–38    move                      PAUSE (2s)
+- 38–44    move                      move
+- 44–48    PAUSE (4s)                move
+- 48–50    move                      PAUSE (2s)
+- 50–53    move                      move
+- 53–56    move                      move
+- 56–60    move                      move
+- 60–62    PAUSE (2s)                PAUSE (2s)  -> G and M reach final targets
+- ========================================================================== */
 const CONDITION         = "INCLU";
 const CONDITION_LABEL = "Inclusion Condition";
 const MAP_CENTER         = [32.888799, 39.929662];
 const SCENE_ROTATION_DEG = 21;
 const MAP_ZOOM           = 16.5;
 const WALK_SPEED_MPS = 2.00;      // reference speed; also the blue dot's manual (d-pad/arrow-key) walking speed
-const GM_WALK_SPEED_MPS = 2.00;  // shared, constant speed for BOTH G and M (higher than the
-                                  // reference speed so they start further back within the same 62s)
+const GM_WALK_SPEED_MPS = 2.00;  // shared, constant speed for BOTH G and M
+
 const T_STABLE       = 2000;
 const T_FINAL_HOLD   = 3000;
 
-// Grey marker's actual rendered diameter (CSS: width 28.35px + border
-// 1.6875px * 2; default content-box box-sizing adds the border to the width).
 const GREY_MARKER_RENDERED_PX = 28.35 + 2 * 1.6875; // = 31.725px
-// For G and M to stand "maximally touching" without overlapping, the
-// center-to-center distance should equal the marker diameter (= sum of the
-// two radii, since both markers are the same size) plus a small visible
-// gap so both icons' edges stay clearly separated.
-const TOUCH_GAP_PX = GREY_MARKER_RENDERED_PX + 6; // ~37.7px center-to-center
+const TOUCH_GAP_PX = GREY_MARKER_RENDERED_PX + 6;   // ~37.7px center-to-center
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function calculateBearing(start, end) {
     const r = d => d * Math.PI / 180;
     const dLng = r(end[0] - start[0]);
     const y = Math.sin(dLng) * Math.cos(r(end[1]));
-    const x = Math.cos(r(start[1])) * Math.sin(r(end[1]))
-            - Math.sin(r(start[1])) * Math.cos(r(end[1])) * Math.cos(dLng);
+    const x = Math.cos(r(start[1])) * Math.sin(r(end[1])) - Math.sin(r(start[1])) * Math.cos(r(end[1])) * Math.cos(dLng);
     return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
@@ -84,7 +73,6 @@ function offsetMeters(origin, bearingDeg, meters) {
     return [origin[0] + dLng, origin[1] + dLat];
 }
 
-// Local flat metric frame (x = east m, y = north m) around a reference point
 function toXY(p, ref) {
     const k = Math.cos(ref[1] * Math.PI / 180);
     return [(p[0] - ref[0]) * M_PER_DEG_LAT * k, (p[1] - ref[1]) * M_PER_DEG_LAT];
@@ -95,7 +83,6 @@ function fromXY(xy, ref) {
 }
 function vecBearing(v) { return (Math.atan2(v[0], v[1]) * 180 / Math.PI + 360) % 360; }
 
-// Map's screen-pixel-to-meter ratio (Web Mercator), for a given latitude and zoom.
 function metersPerPixel(lat, zoom) {
     return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
 }
@@ -108,19 +95,20 @@ const EAST = 90;
 const WEST = 270;
 
 // ── Locations ────────────────────────────────────────────────────────────────
-// Original starting points: only used to reconstruct the old routes' end points
 const REF_START_G  = [32.888409, 39.929681];
 const REF_START_M  = [32.888900, 39.929422];
 const REF_TARGET_G = [32.888455, 39.930278];
-const REF_TARGET_M = [32.890168, 39.929707];
+const REF_TARGET_M = [32.890168, 39.929137];
 const START_U = [32.888559, 39.929150];
+
 const ROAD_START    = [32.888752, 39.929566];
-const ROAD_TARGET_1 = [32.888541, 39.930241];
-const ROAD_TARGET_2 = [32.889835, 39.929885];
+const ROAD_TARGET_1 = [32.888100, 39.930800];
+const ROAD_TARGET_2 = [32.890500, 39.930400];
+
 const BG = calculateBearing(REF_START_G, REF_TARGET_G);
 const BM = calculateBearing(REF_START_M, REF_TARGET_M);
 
-// ── Reference schedules (original timing & shape, unchanged) ────────────────
+// ── Reference schedules (original timing, pauses & deviations unchanged) ────
 const REF_SCHEDULE_G = [
     { d: 2,  b: null },                    // global  0– 2  pause
     { d: 6,  b: BG },                      // global  2– 8  straight
@@ -163,8 +151,6 @@ const REF_SCHEDULE_M = [
     { d: 2,  b: null },                    // global 60–62  PAUSE (2s)
 ];
 
-// ── Old route end points: only used as a directional reference (not a
-// fixed start anymore) to pick which way G and M appear to be approaching from.
 function refEndPoint(startPos, segments) {
     let pos = startPos;
     for (const seg of segments)
@@ -174,44 +160,29 @@ function refEndPoint(startPos, segments) {
 const OLD_ROUTE_END_G = refEndPoint(REF_START_G, REF_SCHEDULE_G);
 const OLD_ROUTE_END_M = refEndPoint(REF_START_M, REF_SCHEDULE_M);
 
-// ── Final targets: the two points on either side of START_U where the grey
-// markers exactly touch (TOUCH_GAP_PX) without overlapping, side by side on screen ──
 const MPP = metersPerPixel(START_U[1], MAP_ZOOM);
 const TOUCH_GAP_M = TOUCH_GAP_PX * MPP;
-const HALF_GAP_M  = TOUCH_GAP_M / 2;
-// The map is rotated by SCENE_ROTATION_DEG, so geographic bearing
-// (SCENE_ROTATION_DEG + 90°) points to "screen right", and +270° to "screen left".
-const SCREEN_RIGHT_BEARING = (SCENE_ROTATION_DEG + 90) % 360;
-const SCREEN_LEFT_BEARING  = (SCENE_ROTATION_DEG + 270) % 360;
-const TARGET_G = offsetMeters(START_U, SCREEN_LEFT_BEARING,  HALF_GAP_M); // leftNode
-const TARGET_M = offsetMeters(START_U, SCREEN_RIGHT_BEARING, HALF_GAP_M); // rightNode
 
-// ── Approach schedules: the template is rotated (direction kept the same as
-// the old route); speed is GM_WALK_SPEED_MPS for both (identical, never
-// scaled per-agent); the start position is solved BACKWARDS so the rotated
-// template, walked at that speed, lands exactly on TARGET at t=62s.
+// ── Specific target coordinates provided for t=62s ─────────────────────────
+const TARGET_G = [32.888516, 39.929161];
+const TARGET_M = [32.888594, 39.929161];
+
 function buildApproachSchedule(refSchedule, oldRouteEnd, targetPos) {
-    // net displacement of the template at the shared G/M walking speed (meters)
     let L = [0, 0];
     for (const s of refSchedule) {
         if (s.b === null) continue;
         const r = s.b * Math.PI / 180, m = GM_WALK_SPEED_MPS * s.d;
         L = [L[0] + m * Math.sin(r), L[1] + m * Math.cos(r)];
     }
-    // Direction: from the old route's end toward the target (only the angle
-    // matters here, not the magnitude) — this is what preserves the "coming
-    // from roughly the same place" feel.
     const oldEndXY = toXY(oldRouteEnd, targetPos);
-    const D = [-oldEndXY[0], -oldEndXY[1]];            // oldRouteEnd -> target direction
+    const D = [-oldEndXY[0], -oldEndXY[1]];
     const rot = (vecBearing(D) - vecBearing(L) + 360) % 360;
 
-    // Rotate the template's net-displacement vector by rot (magnitude unchanged, never scaled).
     const Lmag = Math.hypot(L[0], L[1]);
     const Lbearing = vecBearing(L);
     const fRad = (Lbearing + rot) * Math.PI / 180;
     const F = [Lmag * Math.sin(fRad), Lmag * Math.cos(fRad)];
 
-    // START = TARGET - F  (metric frame centered on TARGET, so TARGET_xy = [0,0])
     const startPos = fromXY([-F[0], -F[1]], targetPos);
 
     return {
@@ -231,7 +202,6 @@ const START_M = APPROACH_M.startPos;
 const SCHEDULE_G = APPROACH_G.segments;
 const SCHEDULE_M = APPROACH_M.segments;
 
-// ── Runtime ──────────────────────────────────────────────────────────────────
 function scheduleTotalSeconds(s) { return s.reduce((a, seg) => a + seg.d, 0); }
 const ACTIVE_MS_G = scheduleTotalSeconds(SCHEDULE_G) * 1000;
 const ACTIVE_MS_M = scheduleTotalSeconds(SCHEDULE_M) * 1000;
@@ -248,8 +218,6 @@ const people = [
     { id: "mainNode",  markerType: "blue-pulse-dot"  }
 ];
 
-// Waypoints built in a flat metric frame centered on the target, so the last
-// waypoint lands exactly on the target.
 function buildWaypoints(startPos, segments, speed, ref) {
     let xy = toXY(startPos, ref), t = 0;
     const keys = [{ t: 0, pos: startPos }];
@@ -416,7 +384,6 @@ function injectUIDesignStyles() {
             justify-content:center; transition:background .2s,transform .1s }
         #submit-btn:active { transform:scale(.96); background:#2c5282 }
         
-        /* ── D-pad / movement control design (ported from the interactive build) ── */
         #d-pad {
             position: absolute;
             bottom: 24px;
@@ -624,10 +591,6 @@ function bootstrap() {
             map = new maplibregl.Map({
                 container: "map",
                 style: "https://tiles.openfreemap.org/styles/liberty",
-                // Centered on MAP_CENTER and NEVER recentered afterward — the
-                // screen/camera stays completely fixed for the whole session.
-                // Only the blue dot marker itself moves (and is clamped to
-                // stay inside this fixed view; see setupMovementControls).
                 center: MAP_CENTER,
                 zoom: MAP_ZOOM,
                 minZoom: MAP_ZOOM,
@@ -642,25 +605,45 @@ function bootstrap() {
             mapLoadTimeoutId = setTimeout(() => { if (!mapHasLoaded) showMapLoadFallback(); }, 8000);
 
             map.on("load", () => {
-                mapHasLoaded = true; clearTimeout(mapLoadTimeoutId);
-                declutterBasemap(); applyFindMyPalette();
+                mapHasLoaded = true;
+                clearTimeout(mapLoadTimeoutId);
+                declutterBasemap();
+                applyFindMyPalette();
 
-                map.addSource("virtual-roads", { type: "geojson", data: { type: "FeatureCollection", features: [
-                    { type: "Feature", geometry: { type: "LineString", coordinates: [
-                        [32.888409, 39.929681],
-                        [32.887900, 39.931650],
-                        [32.887550, 39.933000]
-                    ] } },
-                    { type: "Feature", geometry: { type: "LineString", coordinates: [
-                        [32.888900, 39.929422],
-                        [32.890168, 39.929707],
-                        [32.891200, 39.930400],
-                        [32.892400, 39.931400]
-                    ] } },
-                    { type: "Feature", geometry: { type: "LineString", coordinates: [ROAD_START, ROAD_TARGET_1] } },
-                    { type: "Feature", geometry: { type: "LineString", coordinates: [ROAD_START, ROAD_TARGET_2] } },
-                    { type: "Feature", geometry: { type: "LineString", coordinates: [[32.888292,39.930351],[32.887327,39.930721]] } }
-                ]}});
+                const pathG = [
+                    [ROAD_TARGET_1[0], ROAD_TARGET_1[1]],
+                    [START_G[0], START_G[1]],
+                    [TARGET_G[0], TARGET_G[1]],
+                    [START_U[0], START_U[1]]
+                ];
+
+                const pathM = [
+                    [ROAD_TARGET_2[0], ROAD_TARGET_2[1]],
+                    [START_M[0], START_M[1]],
+                    [TARGET_M[0], TARGET_M[1]],
+                    [START_U[0], START_U[1]]
+                ];
+
+                map.addSource("virtual-roads", {
+                    type: "geojson",
+                    data: {
+                        type: "FeatureCollection",
+                        features: [
+                            {
+                                type: "Feature",
+                                geometry: { type: "LineString", coordinates: pathG }
+                            },
+                            {
+                                type: "Feature",
+                                geometry: { type: "LineString", coordinates: pathM }
+                            },
+                            {
+                                type: "Feature",
+                                geometry: { type: "LineString", coordinates: [ROAD_TARGET_1, ROAD_START, ROAD_TARGET_2] }
+                            }
+                        ]
+                    }
+                });
 
                 let firstRoadLayerId = null;
                 for (const l of map.getStyle().layers) {
@@ -672,13 +655,17 @@ function bootstrap() {
                 }
 
                 map.addLayer({
-                    id: "virtual-roads-casing", type: "line", source: "virtual-roads",
+                    id: "virtual-roads-casing",
+                    type: "line",
+                    source: "virtual-roads",
                     layout: { "line-join": "round", "line-cap": "round" },
                     paint: { "line-color": "#e4dfd3", "line-width": 12 }
                 }, firstRoadLayerId);
 
                 map.addLayer({
-                    id: "virtual-roads-core", type: "line", source: "virtual-roads",
+                    id: "virtual-roads-core",
+                    type: "line",
+                    source: "virtual-roads",
                     layout: { "line-join": "round", "line-cap": "round" },
                     paint: { "line-color": "#ffffff", "line-width": 8 }
                 }, firstRoadLayerId);
@@ -694,8 +681,6 @@ function bootstrap() {
 function setupMovementControls() {
     const TICK_RATE_MS = 30;
     const METERS_PER_TICK = (WALK_SPEED_MPS / 1000) * TICK_RATE_MS;
-    // How far in from the true edge of the screen the blue dot is allowed to
-    // go — keeps its icon fully visible instead of clipping at the very edge.
     const SCREEN_EDGE_MARGIN_PX = 40;
 
     const keyDirections = {
@@ -705,10 +690,6 @@ function setupMovementControls() {
         'ArrowLeft': (270 + SCENE_ROTATION_DEG) % 360
     };
 
-    // Half-width/half-height of the allowed walking area, in meters, measured
-    // along the SCREEN's own right/up axes (which are rotated by
-    // SCENE_ROTATION_DEG relative to geographic east/north, since the map
-    // itself is drawn rotated). Recomputed whenever the viewport size changes.
     let viewHalfWidthM = 0;
     let viewHalfHeightM = 0;
     const mpp = metersPerPixel(MAP_CENTER[1], MAP_ZOOM);
@@ -725,15 +706,10 @@ function setupMovementControls() {
     const rotRad = SCENE_ROTATION_DEG * Math.PI / 180;
     const sinB = Math.sin(rotRad), cosB = Math.cos(rotRad);
 
-    // Keeps a candidate position inside the fixed, never-moving screen: the
-    // screen's center is permanently MAP_CENTER (the map camera never pans), so
-    // this clamps the point's screen-right/screen-up offset from MAP_CENTER to
-    // the visible half-width/half-height, sliding along the edge instead of
-    // letting the dot walk off-screen.
     function clampToScreen(pos) {
-        const [vx, vy] = toXY(pos, MAP_CENTER); // geographic east/north meters from the fixed center
-        let right = vx * cosB - vy * sinB;   // component along the screen's "right" axis
-        let up    = vx * sinB + vy * cosB;   // component along the screen's "up" axis
+        const [vx, vy] = toXY(pos, MAP_CENTER);
+        let right = vx * cosB - vy * sinB;
+        let up    = vx * sinB + vy * cosB;
         right = Math.max(-viewHalfWidthM,  Math.min(viewHalfWidthM,  right));
         up    = Math.max(-viewHalfHeightM, Math.min(viewHalfHeightM, up));
         const vx2 =  right * cosB + up * sinB;
@@ -749,8 +725,6 @@ function setupMovementControls() {
         if (markerInstances["mainNode"]) {
             markerInstances["mainNode"].setLngLat(userPos);
         }
-        // The screen/camera itself never moves (it stays fixed on MAP_CENTER) —
-        // only the blue dot's marker position updates, clamped to stay inside it.
     };
 
     const startMove = (bearing, identifier) => {
