@@ -101,10 +101,9 @@ const REF_TARGET_G = [32.888455, 39.930278];
 const REF_TARGET_M = [32.890168, 39.929707];
 const START_U = [32.888559, 39.929150];
 
-// Capped road nodes preventing rendered road lines from extending beyond boundaries
-const ROAD_START    = [32.888752, 39.929566];
-const ROAD_TARGET_1 = [32.888246, 39.930364];
-const ROAD_TARGET_2 = [32.890191, 39.929699];
+// Lineer yol bağlantı koordinatları
+const ROAD_TARGET_1 = [32.888246, 39.930364]; // G'nin hattındaki üst yol birleşim noktası
+const ROAD_EXT_M    = [32.890191, 39.929699]; // M'nin hattındaki yol birleşim noktası
 
 const BG = calculateBearing(REF_START_G, REF_TARGET_G);
 const BM = calculateBearing(REF_START_M, REF_TARGET_M);
@@ -611,17 +610,15 @@ function bootstrap() {
                 declutterBasemap();
                 applyFindMyPalette();
 
+                // G'nin hattı mevcut açısını koruyarak üst yol birleşim noktasına (ROAD_TARGET_1) kadar tam lineer uzatılmıştır
                 const pathG = [
                     [ROAD_TARGET_1[0], ROAD_TARGET_1[1]],
-                    [START_G[0], START_G[1]],
-                    [TARGET_G[0], TARGET_G[1]],
                     [START_U[0], START_U[1]]
                 ];
 
+                // M'nin Cami Sokak birleşim hattına lineer uzanan yolu
                 const pathM = [
-                    [ROAD_TARGET_2[0], ROAD_TARGET_2[1]],
-                    [START_M[0], START_M[1]],
-                    [TARGET_M[0], TARGET_M[1]],
+                    [ROAD_EXT_M[0], ROAD_EXT_M[1]],
                     [START_U[0], START_U[1]]
                 ];
 
@@ -637,10 +634,6 @@ function bootstrap() {
                             {
                                 type: "Feature",
                                 geometry: { type: "LineString", coordinates: pathM }
-                            },
-                            {
-                                type: "Feature",
-                                geometry: { type: "LineString", coordinates: [ROAD_TARGET_1, ROAD_START, ROAD_TARGET_2] }
                             }
                         ]
                     }
