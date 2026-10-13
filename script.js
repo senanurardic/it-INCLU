@@ -98,12 +98,13 @@ const WEST = 270;
 const REF_START_G  = [32.888409, 39.929681];
 const REF_START_M  = [32.888900, 39.929422];
 const REF_TARGET_G = [32.888455, 39.930278];
-const REF_TARGET_M = [32.890168, 39.929137];
+const REF_TARGET_M = [32.890168, 39.929707];
 const START_U = [32.888559, 39.929150];
 
+// Capped road nodes preventing rendered road lines from extending beyond boundaries
 const ROAD_START    = [32.888752, 39.929566];
-const ROAD_TARGET_1 = [32.888100, 39.930800];
-const ROAD_TARGET_2 = [32.890500, 39.930400];
+const ROAD_TARGET_1 = [32.888246, 39.930364];
+const ROAD_TARGET_2 = [32.890191, 39.929699];
 
 const BG = calculateBearing(REF_START_G, REF_TARGET_G);
 const BM = calculateBearing(REF_START_M, REF_TARGET_M);
@@ -165,7 +166,7 @@ const TOUCH_GAP_M = TOUCH_GAP_PX * MPP;
 
 // ── Specific target coordinates provided for t=62s ─────────────────────────
 const TARGET_G = [32.888516, 39.929161];
-const TARGET_M = [32.888594, 39.929161];
+const TARGET_M = [32.888594, 39.929137];
 
 function buildApproachSchedule(refSchedule, oldRouteEnd, targetPos) {
     let L = [0, 0];
